@@ -15,20 +15,11 @@ $(function () {
             return;
         }
 
-        // Extract the geolocation fields for the sake of the tangelo accessors
-        // below.
-        data.result.data.forEach(function (v) {
-            v.longitude = v.geolocation[0];
-            v.latitude = v.geolocation[1];
-
-            delete v.geolocation;
-        });
-
         // Initialize a map.
         $("#map").geojsdots({
             data: data.result.data,
-            latitude: {field: "latitude"},
-            longitude: {field: "longitude"},
+            latitude: {field: "geolocation.1"},
+            longitude: {field: "geolocation.0"},
             size: {value: 6},
             color: {field: "type"}
         });
