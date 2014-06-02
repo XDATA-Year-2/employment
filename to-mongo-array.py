@@ -1,6 +1,7 @@
 import bson.json_util
 import csv
 import datetime
+import os.path
 import sys
 
 def maybe_float(val, default):
@@ -17,7 +18,9 @@ def main():
         print >>sys.stderr, "usage: to-mongo-array.py <employment.tsv>"
         return 1
 
-    data = csv.reader(open(sys.argv[1]), delimiter="\t")
+    filename = sys.argv[1]
+
+    data = csv.reader(open(filename), delimiter="\t")
 
     headers = ["posted",
                "location",
@@ -39,6 +42,16 @@ def main():
                "url",
                "last_seen"]
 
+    # Analyze the filename for a country code.
+    try:
+        country_code = os.path.basename(filename).split("-")[1]
+        if len(country_code) != 2:
+            print >>sys.stderr, "weird country code: %s" % (country_code)
+            country_code = None
+    except IndexError:
+        print >>sys.stderr, "couldn't find a country code"
+        country_code = None
+
     for rec in data:
         rec = rec[:4] + rec[5:]
         rec = {h: d for (h, d) in zip(headers, rec)}
@@ -52,6 +65,8 @@ def main():
 
         for field in ["posted", "first_seen", "last_seen"]:
             rec[field] = convert_date(rec[field])
+
+        rec["country_code"] = country_code
 
         print bson.json_util.dumps(rec, ensure_ascii=False)
 
