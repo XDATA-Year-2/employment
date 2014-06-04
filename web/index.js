@@ -461,6 +461,8 @@ $(function () {
         var olddate = null;
 
         $("#date").datepicker({
+            changeYear: true,
+            changeMonth: true,
             onSelect: function () {
                 var datestring = $(this).val(),
                     comp,
