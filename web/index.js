@@ -183,8 +183,6 @@ function stddev(data) {
         variance += (data[i] - mean) * (data[i] - mean);
     }
 
-    console.log(variance / (data.length - 1));
-
     return variance / (data.length - 1);
 }
 
@@ -229,8 +227,6 @@ function mapTransform(ellipse, map) {
     dlong = display2latlng({x: center.x + 1, y: center.y})[0].x - display2latlng({x: center.x, y: center.y})[0].x;
     dlat = display2latlng({x: center.x, y: center.y - 1})[0].y - display2latlng({x: center.x, y: center.y})[0].y;
 
-    console.log(dlong);
-
     // Convert the latlong radii into pixel radii.
     radii = {
         x: ellipse.rx / dlong,
@@ -256,27 +252,21 @@ function removeOutliers(data) {
         filtered;
 
     mean = geomean(data);
-    console.log(mean);
 
     dist = data.map(function (d) {
         var shift = [d[0] - mean[0], d[1] - mean[1]];
         return Math.sqrt(shift[0] * shift[0] + shift[1] * shift[1]);
     });
-    console.log(dist);
 
     //limit = stddev(dist) * 1.5;
     limit = stddev(dist);
-    console.log(limit);
 
     filtered = data.filter(function (d) {
         var shift = [d[0] - mean[0], d[1] - mean[1]],
             dist = Math.sqrt(shift[0] * shift[0] + shift[1] * shift[1]);
 
-        console.log(dist);
-
         return dist < limit;
     });
-    console.log(filtered);
 
     return filtered;
 }
@@ -372,30 +362,21 @@ function mad(pts, median) {
     return mads;
 }
 
-$(function () {
-    "use strict";
-
-    // Create control panel.
-    //$("#control-panel").controlPanel();
-
-    // Retrieve some data, then use it to populate a map.
-    d3.json("/service/mongo/mongo/xdata/employment?limit=100", function (error, response) {
+function draw(data) {
         var data,
             center,
             median,
             medianDev,
             geoloc,
             ellipse,
+            ellipseElem,
             pixellipse,
             eigen;
 
-        if (error) {
-            console.error(error);
-            return;
-        }
+        console.log("draw");
 
         // Extract the actual data.
-        data = response.result.data;
+        //data = response.result.data;
 
         // Extract latlongs to compute data circle.
         geoloc = data.map(function (d) {
@@ -414,15 +395,11 @@ $(function () {
         median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
         medianDev = mad(geoloc, median.result);
 
-        console.log(median);
-        console.log(medianDev);
-
         // Eigensystem.
         eigen = eigen2x2(covarMat(geoloc));
 
         // Compute a data ellipse.
         ellipse = dataEllipse(center, eigen);
-        console.log(ellipse);
 
 /*        ellipse = {*/
             //cx: median.result[0],
@@ -441,18 +418,17 @@ $(function () {
             color: {field: "type"}
         });
 
-        d3.select($("#map").geojsdots("svg"))
+        ellipseElem = d3.select($("#map").geojsdots("svg"))
             .append("ellipse")
-            .attr("id", "ellipse");
+            .classed("ellipse", true);
 
         $("#map").on("draw", function () {
             // Transform the data ellipse attributes, which are in units of
             // lat/long, to pixel values.
             pixellipse = mapTransform(ellipse, $("#map"));
-            console.log("pixellipse");
-            console.log(pixellipse);
 
-            d3.select("#ellipse")
+            //d3.select(".ellipse")
+            ellipseElem
                 .attr("cx", pixellipse.cx)
                 .attr("cy", pixellipse.cy)
                 .attr("rx", pixellipse.rx)
@@ -461,5 +437,46 @@ $(function () {
                 .style("stroke", "black")
                 .style("fill", "none");
         });
-    });
+}
+
+function drawCallback(error, response) {
+    if (error) {
+        console.error(error);
+        return;
+    }
+
+    console.log(response.results);
+
+    draw(response.results);
+}
+
+$(function () {
+    "use strict";
+
+    // Create control panel.
+    $("#control-panel").controlPanel();
+
+    // Create a date picker.
+    (function () {
+        var olddate = null;
+
+        $("#date").datepicker({
+            onSelect: function () {
+                var datestring = $(this).val(),
+                    comp,
+                    date;
+
+                if (datestring !== olddate) {
+                    olddate = datestring;
+
+                    // Convert the American-style date to a canonical form
+                    // ("YY-MM-DD").
+                    comp = datestring.split("/");
+                    datestring = [comp[2], comp[0], comp[1]].join("-");
+
+                    d3.json("search/mongo/xdata/employment?date=" + datestring, drawCallback);
+                }
+            }
+        });
+    }());
 });
