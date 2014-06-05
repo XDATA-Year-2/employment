@@ -373,10 +373,9 @@ function draw(data) {
             pixellipse,
             eigen;
 
-        console.log("draw");
-
-        // Extract the actual data.
-        //data = response.result.data;
+        if (data.length === 0) {
+            return;
+        }
 
         // Extract latlongs to compute data circle.
         geoloc = data.map(function (d) {
@@ -463,6 +462,7 @@ $(function () {
         $("#date").datepicker({
             changeYear: true,
             changeMonth: true,
+            defaultDate: new Date(2012, 9, 24),
             onSelect: function () {
                 var datestring = $(this).val(),
                     comp,
