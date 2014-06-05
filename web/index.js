@@ -490,4 +490,12 @@ $(function () {
             }
         });
     }());
+
+    // Handle the country codes box.
+    d3.select("#codes")
+        .on("keyup", function () {
+            var box = d3.select(this);
+
+            console.log(box.property("value"));
+        });
 });
