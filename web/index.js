@@ -439,12 +439,21 @@ function draw(data) {
 }
 
 function drawCallback(error, response) {
+    var plural = function (n) {
+        return n === 1 ? "" : "s";
+    },
+        count;
+
     if (error) {
         console.error(error);
         return;
     }
 
     console.log(response.results);
+
+    count = response.results.length;
+    d3.select("#count")
+        .text(count + " result" + plural(count));
 
     draw(response.results);
 }
@@ -476,7 +485,7 @@ $(function () {
                     comp = datestring.split("/");
                     datestring = [comp[2], comp[0], comp[1]].join("-");
 
-                    d3.json("search/mongo/xdata/employment?date=" + datestring, drawCallback);
+                    d3.json("search/mongo/xdata/employment?limit=1000&date=" + datestring, drawCallback);
                 }
             }
         });
