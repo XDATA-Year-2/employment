@@ -2,6 +2,10 @@
 
 /*globals $, tangelo, d3 */
 
+var app = {};
+app.countries = [];
+app.limit = 1000;
+
 function sq(x) {
     "use strict";
 
@@ -414,7 +418,7 @@ function draw(data) {
             latitude: {field: "geolocation.1"},
             longitude: {field: "geolocation.0"},
             size: {value: 6},
-            color: {field: "type"}
+            color: {field: "country_code"}
         });
 
         ellipseElem = d3.select($("#map").geojsdots("svg"))
@@ -458,6 +462,17 @@ function drawCallback(error, response) {
     draw(response.results);
 }
 
+function doQuery(date, countries, limit){
+    var qstring;
+
+    if (!date) {
+        return;
+    }
+
+    qstring = "search/mongo/xdata/employment?limit=" + limit + "&date=" + date + "&country=[" + countries + "]";
+    d3.json(qstring, drawCallback);
+}
+
 $(function () {
     "use strict";
 
@@ -485,7 +500,9 @@ $(function () {
                     comp = datestring.split("/");
                     datestring = [comp[2], comp[0], comp[1]].join("-");
 
-                    d3.json("search/mongo/xdata/employment?limit=1000&date=" + datestring, drawCallback);
+                    app.date = datestring;
+
+                    doQuery(app.date, app.countries, app.limit);
                 }
             }
         });
@@ -493,9 +510,39 @@ $(function () {
 
     // Handle the country codes box.
     d3.select("#codes")
-        .on("keyup", function () {
-            var box = d3.select(this);
+        .on("keyup", (function () {
+            var timeout = null,
+                oldtext = null;
 
-            console.log(box.property("value"));
-        });
+            return function () {
+                var box = d3.select(this),
+                    text = box.property("value");
+
+                if (timeout) {
+                    window.clearTimeout(timeout);
+                }
+
+                if (text === oldtext) {
+                    return;
+                }
+
+                timeout = window.setTimeout(function () {
+                    oldtext = text;
+
+                    app.countries = text.split(",")
+                        .map(function (s) {
+                            return s.trim();
+                        })
+                        .filter(function (s) {
+                            return s.length > 0;
+                        })
+                        .map(function (s) {
+                            return '"' + s + '"';
+                        });
+
+                    doQuery(app.date, app.countries, app.limit);
+                    timeout = null;
+                }, 500);
+            };
+        }()));
 });

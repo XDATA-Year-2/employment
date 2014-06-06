@@ -1,11 +1,11 @@
-import bson.json_util
+from bson.json_util import loads, dumps
 import datetime
 import pymongo
 import tangelo
 
 
-@tangelo.return_type(bson.json_util.dumps)
-@tangelo.types(query=bson.json_util.loads, limit=int)
+@tangelo.return_type(dumps)
+@tangelo.types(query=loads, country=loads, limit=int)
 def run(host, db, coll, date=None, country=None, query=None, limit=100):
     # First establish a connection.
     try:
@@ -28,14 +28,14 @@ def run(host, db, coll, date=None, country=None, query=None, limit=100):
         terms.append({"posted": d})
 
     # If there is a list of country codes, add them as terms.
-    if country is not None:
-        clauses = [{"country_code": code} for code in country.split(",")]
+    if country is not None and len(country) > 0:
+        clauses = [{"country_code": code} for code in country]
         terms.append({"$or": clauses})
 
     # If there are other query parameters, just include them wholesale.
     if query is not None:
         try:
-            query = bson.json_util.loads(query)
+            query = loads(query)
         except ValueError as e:
             return {"error": repr(e)}
 
