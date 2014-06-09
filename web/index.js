@@ -28,9 +28,6 @@ function draw(data) {
             return d[0] !== 0 || d[1] !== 0;
         });
 
-        // Eliminate the outliers.
-        //geoloc = removeOutliers(geoloc);
-
         // Geolocated mean.
         center = geomean(geoloc);
 
@@ -43,14 +40,6 @@ function draw(data) {
 
         // Compute a data ellipse.
         ellipse = dataEllipse(center, eigen);
-
-/*        ellipse = {*/
-            //cx: median.result[0],
-            //cy: median.result[1],
-            //rx: medianDev[0],
-            //ry: medianDev[1],
-            //angle: ellipse.angle
-        //};
 
         // Initialize a map.
         $("#map").geojsdots({
@@ -136,7 +125,7 @@ $(function () {
                     olddate = datestring;
 
                     // Convert the American-style date to a canonical form
-                    // ("YY-MM-DD").
+                    // ("YYYY-MM-DD").
                     comp = datestring.split("/");
                     datestring = [comp[2], comp[0], comp[1]].join("-");
 
