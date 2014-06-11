@@ -3,379 +3,130 @@
 /*globals $, tangelo, d3 */
 
 var app = {};
-app.countries = [];
-app.limit = 1000;
+app.models = {};
+app.collections = {};
+app.views = {};
 
-function sq(x) {
-    "use strict";
+app.models.JobPosting = Backbone.Model.extend({
+    save: function () {
+        throw new Error("app.models.JobPosting is a read-only model");
+    },
 
-    return x * x;
-}
-
-function magnitude(p) {
-    "use strict";
-
-    return Math.sqrt(sq(p[0]) + sq(p[1]));
-}
-
-function sum(as) {
-    "use strict";
-
-    var i,
-        s = 0.0;
-
-    for (i = 0; i < as.length; i += 1) {
-        s += as[i];
+    destroy: function () {
+        throw new Error("app.models.JobPosting is a read-only model");
     }
+});
 
-    return s;
-}
+app.collections.PostingSet = Backbone.Collection.extend({
+    model: app.models.JobPosting,
 
-function covar(xs, ys) {
-    "use strict";
+    initialize: function () {
+        this.on("reset", function () {
+            console.log("reset");
+        });
+    },
 
-    var xm,
-        ym,
-        N,
-        covariance,
-        i;
+    url: "search/mongo/xdata/employment",
 
-    if (xs.length !== ys.length) {
-        console.error("lengths of vectors passed to covar() must match!");
-        return;
+    fetch: _.wrap(Backbone.Collection.prototype.fetch, function (fetch, options) {
+        options = options || {};
+        _.bind(fetch, this)({
+            success: options.success,
+            data: {
+                date: options.date || "null",
+                country: options.country || "null",
+                query: options.query || "null",
+                limit: options.limit || 1000
+            }
+        });
+
+    }),
+
+    parse: function (response) {
+        return response.results;
+    },
+
+    partition: function (pfunc) {
+        return this;
     }
+});
 
-    // Get the length of the vectors.
-    N = xs.length;
+app.views.MapShot = Backbone.View.extend({
+    initialize: function () {
+        this.collection.on("reset", this.render, this);
+    },
 
-    // Compute the sample means.
-    xm = sum(xs) / N;
-    ym = sum(ys) / N;
+    render: function () {
 
-    // Compute the covariance.
-    covariance = 0.0;
-    for (i = 0; i < N; i += 1) {
-        covariance += (xs[i] - xm) * (ys[i] - ym);
     }
-    covariance /= N;
+});
 
-    return covariance;
-}
+app.views.MasterView = Backbone.View.extend({
+    initialize: function (options) {
+        this.$el.geojsMap();
+        this.svg = d3.select(this.$el.geojsMap("svg"));
 
-function mattrans(m) {
-    "use strict";
+        this.jobs = new app.collections.PostingSet();
 
-    var t,
-        i,
-        plucker;
+        this.colors = d3.scale.category10();
 
-    plucker = function (i) {
-        return function (row) {
-            return row[i];
-        };
-    };
+        Backbone.on("country:change", this.updateCountries, this);
+        Backbone.on("date:change", this.updateDate, this);
 
-    t = [];
-    for (i = 0; i < m[0].length; i += 1) {
-/*        t.push(m.map(function (row) {*/
-            //return row[i];
-        /*}));*/
-        t.push(m.map(plucker(i)));
-    }
+        this.$el.on("draw", _.bind(this.draw, this));
+    },
 
-    return t;
-}
+    latlng2display: function (lat, lng) {
+        return this.$el.geojsMap("latlng2display", geo.latlng(lat, lng));
+    },
 
-function quadraticRoots(a, b, c) {
-    "use strict";
+    updateCountries: function (countries) {
+        var i;
 
-    var determinant = Math.sqrt(b * b - 4 * a * c);
-
-    return [(-b + determinant) / (2 * a), (-b - determinant) / (2 * a)];
-}
-
-function eigen2x2(m) {
-    "use strict";
-
-    var eigenval,
-        eigenvec;
-
-    // Calculate the eigenvalues using the quadratic formula.
-    eigenval = quadraticRoots(1, -(m[0][0] + m[1][1]), m[0][0] * m[1][1] - m[1][0] * m[0][1]);
-
-    // Calculate the eigenvectors based on the eigenvalues.
-    eigenvec = [ [m[0][1], m[0][0] - eigenval[0]],
-                 [m[0][1], m[0][0] - eigenval[1]] ];
-
-    eigenvec = eigenvec.map(function (v) {
-        var mag = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
-
-        return [v[0] / mag, v[1] / mag];
-    });
-
-    return {
-        vals: eigenval,
-        vecs: eigenvec
-    };
-}
-
-function covarMat(data) {
-    "use strict";
-
-    var M,
-        trans,
-        covars = [],
-        cov,
-        i,
-        j;
-
-    // Compute the transpose of the input matrix, to allow for easier access to
-    // the columns.
-    trans = mattrans(data);
-    M = trans.length;
-
-    // Compute the covariances of the columns with each other.
-    for (i = 0; i < M; i += 1) {
-        covars.push([]);
-        for (j = 0; j < M; j += 1) {
-            if (j < i) {
-                cov = covars[j][i];
-            } else {
-                cov = covar(trans[i], trans[j]);
+        // Check to see if the new country data is equal to the old - if so,
+        // bail.
+        if (countries.length === this.countries.length) {
+            for (i = 0; i < countries.length; i += 1) {
+                if (countries[i] !== this.countries[i]) {
+                    break;
+                }
             }
 
-            covars[i].push(cov);
+            if (i === countries.length) {
+                return;
+            }
         }
-    }
 
-    return covars;
-}
+        // Save the new data (make a copy!), and initiate a render action.
+        this.countries = countries.slice();
 
-function geomean(data) {
-    "use strict";
+        if (this.date) {
+            this.render();
+        }
+    },
 
-    var sum = [0.0, 0.0];
+    updateDate: function (date) {
+        // Bail if the new date is equal to the old.
+        if (this.date === date) {
+            return;
+        }
 
-    data.forEach(function (v) {
-        sum[0] += v[0];
-        sum[1] += v[1];
-    });
+        // Save the new date and initiate a render action.
+        this.date = date;
+        this.render();
+    },
 
-    sum[0] /= data.length;
-    sum[1] /= data.length;
-
-    return sum;
-}
-
-function stddev(data) {
-    "use strict";
-
-    var mean,
-        variance,
-        i;
-
-    // Compute the mean.
-    mean = 0.0;
-    for (i = 0; i < data.length; i += 1) {
-        mean += data[i];
-    }
-    mean /= data.length;
-
-    // Compute the variance.
-    variance = 0.0;
-    for (i = 0; i < data.length; i += 1) {
-        variance += (data[i] - mean) * (data[i] - mean);
-    }
-
-    return variance / (data.length - 1);
-}
-
-function dataEllipse(center, eigensystem) {
-    "use strict";
-
-    var eigval = eigensystem.vals,
-        eigvec = eigensystem.vecs,
-        angle;
-
-    // Compute the angle of the first eigenvector from the x-axis.
-    angle = Math.atan2(eigvec[0][1], eigvec[0][0]) / (2 * Math.PI) * 360;
-
-    // Send back the attributes needed to draw an SVG data ellipse.
-    return {
-        cx: center[0],
-        cy: center[1],
-        rx: Math.sqrt(eigval[0]),
-        ry: Math.sqrt(eigval[1]),
-        angle: angle
-    };
-}
-
-function mapTransform(ellipse, map) {
-    "use strict";
-
-    var center,
-        radii = {},
-        display2latlng,
-        dlong,
-        dlat;
-
-    // Create a shorthand for the lat-long to display function.
-    display2latlng = map.geojsdots.bind(map, "display2latlng");
-
-    // Compute the pixel center of the ellipse.
-    center = map.geojsdots("latlng2display", geo.latlng(ellipse.cy, ellipse.cx))[0];
-
-    // To figure out the pixel radii of the ellipse, we need to know what the
-    // "pixel density" in the lat and long directions are at the center of the
-    // ellipse.  We use the inverse mapping to figure out what it is.
-    dlong = display2latlng({x: center.x + 1, y: center.y})[0].x - display2latlng({x: center.x, y: center.y})[0].x;
-    dlat = display2latlng({x: center.x, y: center.y - 1})[0].y - display2latlng({x: center.x, y: center.y})[0].y;
-
-    // Convert the latlong radii into pixel radii.
-    radii = {
-        x: ellipse.rx / dlong,
-        y: ellipse.ry / dlat
-    };
-
-    // Return the transformed ellipse.
-    return {
-        cx: center.x,
-        cy: center.y,
-        rx: radii.x,
-        ry: radii.y,
-        angle: ellipse.angle
-    };
-}
-
-function removeOutliers(data) {
-    "use strict";
-
-    var mean,
-        limit,
-        dist,
-        filtered;
-
-    mean = geomean(data);
-
-    dist = data.map(function (d) {
-        var shift = [d[0] - mean[0], d[1] - mean[1]];
-        return Math.sqrt(shift[0] * shift[0] + shift[1] * shift[1]);
-    });
-
-    //limit = stddev(dist) * 1.5;
-    limit = stddev(dist);
-
-    filtered = data.filter(function (d) {
-        var shift = [d[0] - mean[0], d[1] - mean[1]],
-            dist = Math.sqrt(shift[0] * shift[0] + shift[1] * shift[1]);
-
-        return dist < limit;
-    });
-
-    return filtered;
-}
-
-function distGrad(pts, pt) {
-    "use strict";
-
-    var gradx = 0,
-        grady = 0,
-        dist,
-        x,
-        y,
-        xi,
-        yi,
-        i;
-
-    for (i = 0; i < pts.length; i += 1) {
-        x = pt[0];
-        y = pt[1];
-
-        xi = pts[i][0];
-        yi = pts[i][1];
-
-        dist = Math.sqrt(sq(x - xi) + sq(y - yi));
-
-        gradx += (x - xi) / dist;
-        grady += (y - yi) / dist;
-    }
-
-    return [gradx, grady];
-}
-
-function gradientDescent(grad, initial, step, maxsteps, eps) {
-    "use strict";
-
-    var gradvec = grad(initial),
-        gradval = Math.sqrt(sq(gradvec[0]) + sq(gradvec[1])),
-        stepsize = 0.1,
-        newinitial;
-
-    if (gradval <= eps || step === maxsteps) {
-        return {
-            result: initial,
-            steps: step,
-            grad: gradvec,
-            gradMag: gradval
-        };
-    }
-
-    newinitial = [initial[0] - stepsize * gradvec[0],
-                  initial[1] - stepsize * gradvec[1]];
-
-    if (Math.abs(magnitude(grad(newinitial)) - gradval) < eps) {
-        stepsize /= 2;
-        newinitial = [initial[0] - stepsize * gradvec[0],
-                      initial[1] - stepsize * gradvec[1]];
-    }
-
-    return gradientDescent(grad, newinitial, step + 1, maxsteps, eps);
-}
-
-function numericComp(x, y) {
-    return x - y;
-}
-
-// "Median absolute deviation".
-function mad(pts, median) {
-    "use strict";
-
-    var mads = [null, null],
-        devs;
-
-    devs = pts.map(function (p) {
-        return Math.abs(p[0] - median[0]);
-    }).sort(numericComp);
-
-    if (devs.length % 2 === 1) {
-        mads[0] = devs[Math.floor(devs.length / 2)];
-    } else {
-        mads[0] = 0.5 * (devs[devs.length / 2 - 1] + devs[devs.length / 2]);
-    }
-
-    devs = pts.map(function (p) {
-        return Math.abs(p[1] - median[1]);
-    }).sort(numericComp);
-
-    if (devs.length % 2 === 1) {
-        mads[1] = devs[Math.floor(devs.length / 2)];
-    } else {
-        mads[1] = 0.5 * (devs[devs.length / 2 - 1] + devs[devs.length / 2]);
-    }
-
-    return mads;
-}
-
-function draw(data) {
+    computeDataEllipse: function () {
         var data,
             center,
             median,
             medianDev,
             geoloc,
             ellipse,
-            ellipseElem,
-            pixellipse,
             eigen;
+
+        data = this.svg.selectAll("circle")
+            .data();
 
         if (data.length === 0) {
             return;
@@ -383,13 +134,10 @@ function draw(data) {
 
         // Extract latlongs to compute data circle.
         geoloc = data.map(function (d) {
-            return d.geolocation;
+            return d.get("geolocation");
         }).filter(function (d) {
             return d[0] !== 0 || d[1] !== 0;
         });
-
-        // Eliminate the outliers.
-        //geoloc = removeOutliers(geoloc);
 
         // Geolocated mean.
         center = geomean(geoloc);
@@ -403,75 +151,72 @@ function draw(data) {
 
         // Compute a data ellipse.
         ellipse = dataEllipse(center, eigen);
-
-/*        ellipse = {*/
-            //cx: median.result[0],
-            //cy: median.result[1],
-            //rx: medianDev[0],
-            //ry: medianDev[1],
-            //angle: ellipse.angle
-        //};
-
-        // Initialize a map.
-        $("#map").geojsdots({
-            data: data,
-            latitude: {field: "geolocation.1"},
-            longitude: {field: "geolocation.0"},
-            size: {value: 6},
-            color: {field: "country_code"}
-        });
-
-        ellipseElem = d3.select($("#map").geojsdots("svg"))
-            .append("ellipse")
+        this.svg.append("ellipse")
+            .datum(ellipse)
             .classed("ellipse", true);
-
-        $("#map").on("draw", function () {
-            // Transform the data ellipse attributes, which are in units of
-            // lat/long, to pixel values.
-            pixellipse = mapTransform(ellipse, $("#map"));
-
-            //d3.select(".ellipse")
-            ellipseElem
-                .attr("cx", pixellipse.cx)
-                .attr("cy", pixellipse.cy)
-                .attr("rx", pixellipse.rx)
-                .attr("ry", pixellipse.ry)
-                .attr("transform", "rotate(" + pixellipse.angle + " " + pixellipse.cx + " " + pixellipse.cy + ")")
-                .style("stroke", "black")
-                .style("fill", "none");
-        });
-}
-
-function drawCallback(error, response) {
-    var plural = function (n) {
-        return n === 1 ? "" : "s";
     },
-        count;
 
-    if (error) {
-        console.error(error);
-        return;
-    }
+    draw: function () {
+        var that = this;
 
-    console.log(response.results);
+        this.svg.selectAll("circle")
+            .attr("cx", function (d) {
+                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                return pt[0].x;
+            })
+            .attr("cy", function (d) {
+                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                return pt[0].y;
+            })
+            .attr("r", 6)
+            .style("fill", function (d) {
+                return that.colors(d.get("country_code"));
+            })
+            .style("stroke", "black");
 
-    count = response.results.length;
-    d3.select("#count")
-        .text(count + " result" + plural(count));
+        this.svg.selectAll(".ellipse")
+            .each(function (d) {
+                d.pixellipse = mapTransform(d, that.$el);
+            })
+            .attr("cx", function (d) {
+                return d.pixellipse.cx;
+            })
+            .attr("cy", function (d) {
+                return d.pixellipse.cy;
+            })
+            .attr("rx", function (d) {
+                return d.pixellipse.rx;
+            })
+            .attr("ry", function (d) {
+                return d.pixellipse.ry;
+            })
+            .attr("transform", function (d) {
+                return "rotate(" + d.pixellipse.angle + " " + d.pixellipse.cx + " " + d.pixellipse.cy + ")";
+            })
+            .style("stroke", "black")
+            .style("fill", "none");
+    },
 
-    draw(response.results);
-}
+    render: function () {
+        this.jobs.fetch({
+            date: this.date,
+            country: this.country,
+            success: _.bind(function (me) {
+                this.svg.selectAll("circle")
+                    .data(me.models)
+                    .enter()
+                    .append("circle");
 
-function doQuery(date, countries, limit){
-    var qstring;
+                this.computeDataEllipse();
 
-    if (!date) {
-        return;
-    }
+                this.draw();
+            }, this)
+        });
+    },
 
-    qstring = "search/mongo/xdata/employment?limit=" + limit + "&date=" + date + "&country=[" + countries + "]";
-    d3.json(qstring, drawCallback);
-}
+    countries: "",
+    date: ""
+});
 
 $(function () {
     "use strict";
@@ -496,13 +241,13 @@ $(function () {
                     olddate = datestring;
 
                     // Convert the American-style date to a canonical form
-                    // ("YY-MM-DD").
+                    // ("YYYY-MM-DD").
                     comp = datestring.split("/");
                     datestring = [comp[2], comp[0], comp[1]].join("-");
 
                     app.date = datestring;
 
-                    doQuery(app.date, app.countries, app.limit);
+                    Backbone.trigger("date:change", datestring);
                 }
             }
         });
@@ -527,9 +272,11 @@ $(function () {
                 }
 
                 timeout = window.setTimeout(function () {
+                    var countries;
+
                     oldtext = text;
 
-                    app.countries = text.split(",")
+                    countries = text.split(",")
                         .map(function (s) {
                             return s.trim();
                         })
@@ -540,9 +287,13 @@ $(function () {
                             return '"' + s + '"';
                         });
 
-                    doQuery(app.date, app.countries, app.limit);
+                    Backbone.trigger("country:change", text);
                     timeout = null;
                 }, 500);
             };
         }()));
+
+    app.masterview = new app.views.MasterView({
+        el: "#map"
+    });
 });
