@@ -53,11 +53,57 @@ app.collections.PostingSet = Backbone.Collection.extend({
 
 app.views.MapShot = Backbone.View.extend({
     initialize: function () {
-        this.collection.on("reset", this.render, this);
+        this.g = d3.select(this.$el.geojsMap("svg"))
+            .append("g")
+            .attr("id", _.uniqueId("mapshot"));
+    },
+
+    computeDataEllipse: function () {
+        var data,
+            center,
+            median,
+            medianDev,
+            geoloc,
+            ellipse,
+            eigen;
+
+        data = this.g.selectAll("circle")
+            .data();
+
+        if (data.length === 0) {
+            return;
+        }
+
+        // Extract latlongs to compute data circle.
+        geoloc = data.map(function (d) {
+            return d.get("geolocation");
+        }).filter(function (d) {
+            return d[0] !== 0 || d[1] !== 0;
+        });
+
+        // Geolocated mean.
+        center = geomean(geoloc);
+
+        // Test out the gradient descent thing.
+        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
+        medianDev = mad(geoloc, median.result);
+
+        // Eigensystem.
+        eigen = eigen2x2(covarMat(geoloc));
+
+        // Compute a data ellipse.
+        return dataEllipse(center, eigen);
     },
 
     render: function () {
+        this.g.selectAll("circle")
+            .data(this.collection.models)
+            .enter()
+            .append("circle");
 
+        this.g.append("ellipse")
+            .datum(this.computeDataEllipse())
+            .classed("ellipse", true);
     }
 });
 
@@ -116,46 +162,6 @@ app.views.MasterView = Backbone.View.extend({
         this.render();
     },
 
-    computeDataEllipse: function () {
-        var data,
-            center,
-            median,
-            medianDev,
-            geoloc,
-            ellipse,
-            eigen;
-
-        data = this.svg.selectAll("circle")
-            .data();
-
-        if (data.length === 0) {
-            return;
-        }
-
-        // Extract latlongs to compute data circle.
-        geoloc = data.map(function (d) {
-            return d.get("geolocation");
-        }).filter(function (d) {
-            return d[0] !== 0 || d[1] !== 0;
-        });
-
-        // Geolocated mean.
-        center = geomean(geoloc);
-
-        // Test out the gradient descent thing.
-        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
-        medianDev = mad(geoloc, median.result);
-
-        // Eigensystem.
-        eigen = eigen2x2(covarMat(geoloc));
-
-        // Compute a data ellipse.
-        ellipse = dataEllipse(center, eigen);
-        this.svg.append("ellipse")
-            .datum(ellipse)
-            .classed("ellipse", true);
-    },
-
     draw: function () {
         var that = this;
 
@@ -202,16 +208,23 @@ app.views.MasterView = Backbone.View.extend({
             date: this.date,
             country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
+                var view;
+
+                // Empty the SVG element.
                 this.svg.selectAll("*")
                     .remove();
 
-                this.svg.selectAll("circle")
-                    .data(me.models)
-                    .enter()
-                    .append("circle");
+                // Create a MapShot view to handle the search results.
+                view = new app.views.MapShot({
+                    collection: this.jobs,
+                    el: this.el
+                });
 
-                this.computeDataEllipse();
+                // Have it populate the SVG element with dots and data ellipse.
+                view.render();
 
+                // Draw immediately to refresh the screen (further drawing will
+                // occur on pan and zoom events).
                 this.draw();
             }, this)
         });
