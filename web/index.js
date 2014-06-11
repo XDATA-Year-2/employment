@@ -200,8 +200,11 @@ app.views.MasterView = Backbone.View.extend({
     render: function () {
         this.jobs.fetch({
             date: this.date,
-            country: this.country,
+            country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
+                this.svg.selectAll("*")
+                    .remove();
+
                 this.svg.selectAll("circle")
                     .data(me.models)
                     .enter()
@@ -264,9 +267,6 @@ $(function () {
                     })
                     .filter(function (s) {
                         return s.length > 0;
-                    })
-                    .map(function (s) {
-                        return '"' + s + '"';
                     });
 
             Backbone.trigger("country:change", countries);
