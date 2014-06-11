@@ -46,6 +46,10 @@ app.collections.PostingSet = Backbone.Collection.extend({
 
     }),
 
+    parse: function (response) {
+        return response.results;
+    },
+
     partition: function (pfunc) {
         return this;
     }
