@@ -202,6 +202,9 @@ app.views.MasterView = Backbone.View.extend({
             date: this.date,
             country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
+                this.svg.selectAll("*")
+                    .remove();
+
                 this.svg.selectAll("circle")
                     .data(me.models)
                     .enter()
