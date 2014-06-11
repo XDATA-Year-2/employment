@@ -3,10 +3,6 @@
 /*globals $, tangelo, d3 */
 
 var app = {};
-app.map = null;
-app.countries = [];
-app.limit = 1000;
-
 app.models = {};
 app.collections = {};
 app.views = {};
@@ -127,8 +123,6 @@ app.views.MasterView = Backbone.View.extend({
             medianDev,
             geoloc,
             ellipse,
-            ellipseElem,
-            pixellipse,
             eigen;
 
         data = this.svg.selectAll("circle")
@@ -157,8 +151,7 @@ app.views.MasterView = Backbone.View.extend({
 
         // Compute a data ellipse.
         ellipse = dataEllipse(center, eigen);
-
-        ellipseElem = this.svg.append("ellipse")
+        this.svg.append("ellipse")
             .datum(ellipse)
             .classed("ellipse", true);
     },
