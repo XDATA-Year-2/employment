@@ -255,43 +255,22 @@ $(function () {
 
     // Handle the country codes box.
     d3.select("#codes")
-        .on("keyup", (function () {
-            var timeout = null,
-                oldtext = null;
+        .on("keyup", _.debounce(function () {
+            var countries = d3.select(this)
+                    .property("value")
+                    .split(",")
+                    .map(function (s) {
+                        return s.trim();
+                    })
+                    .filter(function (s) {
+                        return s.length > 0;
+                    })
+                    .map(function (s) {
+                        return '"' + s + '"';
+                    });
 
-            return function () {
-                var box = d3.select(this),
-                    text = box.property("value");
-
-                if (timeout) {
-                    window.clearTimeout(timeout);
-                }
-
-                if (text === oldtext) {
-                    return;
-                }
-
-                timeout = window.setTimeout(function () {
-                    var countries;
-
-                    oldtext = text;
-
-                    countries = text.split(",")
-                        .map(function (s) {
-                            return s.trim();
-                        })
-                        .filter(function (s) {
-                            return s.length > 0;
-                        })
-                        .map(function (s) {
-                            return '"' + s + '"';
-                        });
-
-                    Backbone.trigger("country:change", text);
-                    timeout = null;
-                }, 500);
-            };
-        }()));
+            Backbone.trigger("country:change", countries);
+        }, 500));
 
     app.masterview = new app.views.MasterView({
         el: "#map"
