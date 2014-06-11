@@ -212,10 +212,10 @@ function mapTransform(ellipse, map) {
         dlat;
 
     // Create a shorthand for the lat-long to display function.
-    display2latlng = map.geojsdots.bind(map, "display2latlng");
+    display2latlng = map.geojsMap.bind(map, "display2latlng");
 
     // Compute the pixel center of the ellipse.
-    center = map.geojsdots("latlng2display", geo.latlng(ellipse.cy, ellipse.cx))[0];
+    center = map.geojsMap("latlng2display", geo.latlng(ellipse.cy, ellipse.cx))[0];
 
     // To figure out the pixel radii of the ellipse, we need to know what the
     // "pixel density" in the lat and long directions are at the center of the

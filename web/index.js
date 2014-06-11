@@ -120,6 +120,73 @@ app.views.MasterView = Backbone.View.extend({
         this.render();
     },
 
+    computeDataEllipse: function () {
+        var data,
+            center,
+            median,
+            medianDev,
+            geoloc,
+            ellipse,
+            ellipseElem,
+            pixellipse,
+            eigen;
+
+        data = this.svg.selectAll("circle")
+            .data();
+
+        if (data.length === 0) {
+            return;
+        }
+
+        // Extract latlongs to compute data circle.
+        geoloc = data.map(function (d) {
+            return d.get("geolocation");
+        }).filter(function (d) {
+            return d[0] !== 0 || d[1] !== 0;
+        });
+
+        // Geolocated mean.
+        center = geomean(geoloc);
+
+        // Test out the gradient descent thing.
+        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
+        medianDev = mad(geoloc, median.result);
+
+        // Eigensystem.
+        eigen = eigen2x2(covarMat(geoloc));
+
+        // Compute a data ellipse.
+        ellipse = dataEllipse(center, eigen);
+
+        //// Initialize a map.
+        //$("#map").geojsdots({
+            //data: data,
+            //latitude: {field: "geolocation.1"},
+            //longitude: {field: "geolocation.0"},
+            //size: {value: 6},
+            //color: {field: "country_code"}
+        //});
+
+        ellipseElem = this.svg.append("ellipse")
+            .datum(ellipse)
+            .classed("ellipse", true);
+
+/*        this.$el.on("draw", _.bind(function () {*/
+            //// Transform the data ellipse attributes, which are in units of
+            //// lat/long, to pixel values.
+            //pixellipse = mapTransform(ellipse, this.$el);
+
+            //ellipseElem
+/*                .attr("cx", pixellipse.cx)*/
+                //.attr("cy", pixellipse.cy)
+                //.attr("rx", pixellipse.rx)
+                //.attr("ry", pixellipse.ry)
+                //.attr("transform", "rotate(" + pixellipse.angle + " " + pixellipse.cx + " " + pixellipse.cy + ")")
+                //.style("stroke", "black")
+                /*.style("fill", "none");*/
+        /*}, this));*/
+    },
+
     draw: function () {
         var that = this;
 
@@ -137,6 +204,28 @@ app.views.MasterView = Backbone.View.extend({
                 return that.colors(d.get("country_code"));
             })
             .style("stroke", "black");
+
+        this.svg.selectAll(".ellipse")
+            .each(function (d) {
+                d.pixellipse = mapTransform(d, that.$el);
+            })
+            .attr("cx", function (d) {
+                return d.pixellipse.cx;
+            })
+            .attr("cy", function (d) {
+                return d.pixellipse.cy;
+            })
+            .attr("rx", function (d) {
+                return d.pixellipse.rx;
+            })
+            .attr("ry", function (d) {
+                return d.pixellipse.ry;
+            })
+            .attr("transform", function (d) {
+                return "rotate(" + d.pixellipse.angle + " " + d.pixellipse.cx + " " + d.pixellipse.cy + ")";
+            })
+            .style("stroke", "black")
+            .style("fill", "none");
     },
 
     render: function () {
@@ -149,8 +238,9 @@ app.views.MasterView = Backbone.View.extend({
                     .enter()
                     .append("circle");
 
-                this.draw();
+                this.computeDataEllipse();
 
+                this.draw();
             }, this)
         });
     },
