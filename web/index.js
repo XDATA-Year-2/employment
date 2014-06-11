@@ -3,8 +3,157 @@
 /*globals $, tangelo, d3 */
 
 var app = {};
+app.map = null;
 app.countries = [];
 app.limit = 1000;
+
+app.models = {};
+app.collections = {};
+app.views = {};
+
+app.models.JobPosting = Backbone.Model.extend({
+    save: function () {
+        throw new Error("app.models.JobPosting is a read-only model");
+    },
+
+    destroy: function () {
+        throw new Error("app.models.JobPosting is a read-only model");
+    }
+});
+
+app.collections.PostingSet = Backbone.Collection.extend({
+    model: app.models.JobPosting,
+
+    initialize: function () {
+        this.on("reset", function () {
+            console.log("reset");
+        });
+    },
+
+    url: "search/mongo/xdata/employment",
+
+    fetch: _.wrap(Backbone.Collection.prototype.fetch, function (fetch, options) {
+        options = options || {};
+        _.bind(fetch, this)({
+            success: options.success,
+            data: {
+                date: options.date || "null",
+                country: options.country || "null",
+                query: options.query || "null",
+                limit: options.limit || 1000
+            }
+        });
+
+    }),
+
+    partition: function (pfunc) {
+        return this;
+    }
+});
+
+app.views.MapShot = Backbone.View.extend({
+    initialize: function () {
+        this.collection.on("reset", this.render, this);
+    },
+
+    render: function () {
+
+    }
+});
+
+app.views.MasterView = Backbone.View.extend({
+    initialize: function (options) {
+        this.$el.geojsMap();
+        this.svg = d3.select(this.$el.geojsMap("svg"));
+
+        this.jobs = new app.collections.PostingSet();
+
+        this.colors = d3.scale.category10();
+
+        Backbone.on("country:change", this.updateCountries, this);
+        Backbone.on("date:change", this.updateDate, this);
+
+        this.$el.on("draw", _.bind(this.draw, this));
+    },
+
+    latlng2display: function (lat, lng) {
+        return this.$el.geojsMap("latlng2display", geo.latlng(lat, lng));
+    },
+
+    updateCountries: function (countries) {
+        var i;
+
+        // Check to see if the new country data is equal to the old - if so,
+        // bail.
+        if (countries.length === this.countries.length) {
+            for (i = 0; i < countries.length; i += 1) {
+                if (countries[i] !== this.countries[i]) {
+                    break;
+                }
+            }
+
+            if (i === countries.length) {
+                return;
+            }
+        }
+
+        // Save the new data (make a copy!), and initiate a render action.
+        this.countries = countries.slice();
+
+        if (this.date) {
+            this.render();
+        }
+    },
+
+    updateDate: function (date) {
+        // Bail if the new date is equal to the old.
+        if (this.date === date) {
+            return;
+        }
+
+        // Save the new date and initiate a render action.
+        this.date = date;
+        this.render();
+    },
+
+    draw: function () {
+        var that = this;
+
+        this.svg.selectAll("circle")
+            .attr("cx", function (d) {
+                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                return pt[0].x;
+            })
+            .attr("cy", function (d) {
+                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                return pt[0].y;
+            })
+            .attr("r", 6)
+            .style("fill", function (d) {
+                return that.colors(d.get("country_code"));
+            })
+            .style("stroke", "black");
+    },
+
+    render: function () {
+        this.jobs.fetch({
+            date: this.date,
+            country: this.country,
+            success: _.bind(function (me) {
+                this.svg.selectAll("circle")
+                    .data(me.models)
+                    .enter()
+                    .append("circle");
+
+                this.draw();
+
+            }, this)
+        });
+    },
+
+    countries: "",
+    date: ""
+});
 
 function draw(data) {
         var data,
@@ -131,7 +280,7 @@ $(function () {
 
                     app.date = datestring;
 
-                    doQuery(app.date, app.countries, app.limit);
+                    Backbone.trigger("date:change", datestring);
                 }
             }
         });
@@ -156,9 +305,11 @@ $(function () {
                 }
 
                 timeout = window.setTimeout(function () {
+                    var countries;
+
                     oldtext = text;
 
-                    app.countries = text.split(",")
+                    countries = text.split(",")
                         .map(function (s) {
                             return s.trim();
                         })
@@ -169,9 +320,14 @@ $(function () {
                             return '"' + s + '"';
                         });
 
-                    doQuery(app.date, app.countries, app.limit);
+                    //doQuery(app.date, app.countries, app.limit);
+                    Backbone.trigger("country:change", text);
                     timeout = null;
                 }, 500);
             };
         }()));
+
+    app.masterview = new app.views.MasterView({
+        el: "#map"
+    });
 });

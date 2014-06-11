@@ -48,4 +48,5 @@ def run(host, db, coll, date=None, country=None, query=None, limit=100):
     it = c.find(spec=search, limit=limit)
 
     # Run the iterator to return the results.
-    return {"results": list(it)}
+    #return {"results": list(it)}
+    return list(it)
