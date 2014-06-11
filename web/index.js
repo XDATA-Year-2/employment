@@ -158,33 +158,9 @@ app.views.MasterView = Backbone.View.extend({
         // Compute a data ellipse.
         ellipse = dataEllipse(center, eigen);
 
-        //// Initialize a map.
-        //$("#map").geojsdots({
-            //data: data,
-            //latitude: {field: "geolocation.1"},
-            //longitude: {field: "geolocation.0"},
-            //size: {value: 6},
-            //color: {field: "country_code"}
-        //});
-
         ellipseElem = this.svg.append("ellipse")
             .datum(ellipse)
             .classed("ellipse", true);
-
-/*        this.$el.on("draw", _.bind(function () {*/
-            //// Transform the data ellipse attributes, which are in units of
-            //// lat/long, to pixel values.
-            //pixellipse = mapTransform(ellipse, this.$el);
-
-            //ellipseElem
-/*                .attr("cx", pixellipse.cx)*/
-                //.attr("cy", pixellipse.cy)
-                //.attr("rx", pixellipse.rx)
-                //.attr("ry", pixellipse.ry)
-                //.attr("transform", "rotate(" + pixellipse.angle + " " + pixellipse.cx + " " + pixellipse.cy + ")")
-                //.style("stroke", "black")
-                /*.style("fill", "none");*/
-        /*}, this));*/
     },
 
     draw: function () {
@@ -248,102 +224,6 @@ app.views.MasterView = Backbone.View.extend({
     countries: "",
     date: ""
 });
-
-function draw(data) {
-        var data,
-            center,
-            median,
-            medianDev,
-            geoloc,
-            ellipse,
-            ellipseElem,
-            pixellipse,
-            eigen;
-
-        if (data.length === 0) {
-            return;
-        }
-
-        // Extract latlongs to compute data circle.
-        geoloc = data.map(function (d) {
-            return d.geolocation;
-        }).filter(function (d) {
-            return d[0] !== 0 || d[1] !== 0;
-        });
-
-        // Geolocated mean.
-        center = geomean(geoloc);
-
-        // Test out the gradient descent thing.
-        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
-        medianDev = mad(geoloc, median.result);
-
-        // Eigensystem.
-        eigen = eigen2x2(covarMat(geoloc));
-
-        // Compute a data ellipse.
-        ellipse = dataEllipse(center, eigen);
-
-        // Initialize a map.
-        $("#map").geojsdots({
-            data: data,
-            latitude: {field: "geolocation.1"},
-            longitude: {field: "geolocation.0"},
-            size: {value: 6},
-            color: {field: "country_code"}
-        });
-
-        ellipseElem = d3.select($("#map").geojsdots("svg"))
-            .append("ellipse")
-            .classed("ellipse", true);
-
-        $("#map").on("draw", function () {
-            // Transform the data ellipse attributes, which are in units of
-            // lat/long, to pixel values.
-            pixellipse = mapTransform(ellipse, $("#map"));
-
-            //d3.select(".ellipse")
-            ellipseElem
-                .attr("cx", pixellipse.cx)
-                .attr("cy", pixellipse.cy)
-                .attr("rx", pixellipse.rx)
-                .attr("ry", pixellipse.ry)
-                .attr("transform", "rotate(" + pixellipse.angle + " " + pixellipse.cx + " " + pixellipse.cy + ")")
-                .style("stroke", "black")
-                .style("fill", "none");
-        });
-}
-
-function drawCallback(error, response) {
-    var plural = function (n) {
-        return n === 1 ? "" : "s";
-    },
-        count;
-
-    if (error) {
-        console.error(error);
-        return;
-    }
-
-    console.log(response.results);
-
-    count = response.results.length;
-    d3.select("#count")
-        .text(count + " result" + plural(count));
-
-    draw(response.results);
-}
-
-function doQuery(date, countries, limit){
-    var qstring;
-
-    if (!date) {
-        return;
-    }
-
-    qstring = "search/mongo/xdata/employment?limit=" + limit + "&date=" + date + "&country=[" + countries + "]";
-    d3.json(qstring, drawCallback);
-}
 
 $(function () {
     "use strict";
@@ -414,7 +294,6 @@ $(function () {
                             return '"' + s + '"';
                         });
 
-                    //doQuery(app.date, app.countries, app.limit);
                     Backbone.trigger("country:change", text);
                     timeout = null;
                 }, 500);
