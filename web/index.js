@@ -118,6 +118,7 @@ app.views.MasterView = Backbone.View.extend({
 
         Backbone.on("country:change", this.updateCountries, this);
         Backbone.on("date:change", this.updateDate, this);
+        Backbone.on("group:change", this.updateGroup, this);
 
         this.$el.on("draw", _.bind(this.draw, this));
     },
@@ -159,6 +160,15 @@ app.views.MasterView = Backbone.View.extend({
 
         // Save the new date and initiate a render action.
         this.date = date;
+        this.render();
+    },
+
+    updateGroup: function (group) {
+        if (this.group === group) {
+            return;
+        }
+
+        this.group = group;
         this.render();
     },
 
@@ -208,20 +218,29 @@ app.views.MasterView = Backbone.View.extend({
             date: this.date,
             country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
-                var view;
+                var groups;
 
                 // Empty the SVG element.
                 this.svg.selectAll("*")
                     .remove();
 
-                // Create a MapShot view to handle the search results.
-                view = new app.views.MapShot({
-                    collection: this.jobs,
-                    el: this.el
-                });
+                // Group the collection of JobPostings by the grouping function.
+                groups = this.jobs.groupBy(this.groupFuncs[this.group]);
 
-                // Have it populate the SVG element with dots and data ellipse.
-                view.render();
+                // Create MapShot views to handle the search results, one per
+                // group.
+                this.subviews = _.map(groups, _.bind(function (group) {
+                    return new app.views.MapShot({
+                        collection: new app.collections.PostingSet(group),
+                        el: this.el
+                    });
+                }, this));
+
+                // Have them populate the SVG element with dots and data
+                // ellipse.
+                _.each(this.subviews, function (view) {
+                    view.render();
+                });
 
                 // Draw immediately to refresh the screen (further drawing will
                 // occur on pan and zoom events).
@@ -230,8 +249,15 @@ app.views.MasterView = Backbone.View.extend({
         });
     },
 
-    countries: "",
-    date: ""
+    countries: [],
+    date: "",
+    group: "None",
+
+    groupFuncs: {
+        "None": tangelo.accessor({value: 0}),
+        "Country": tangelo.accessor({field: "attributes.country_code"}),
+        "Job type": tangelo.accessor({field: "attributes.type"})
+    }
 });
 
 $(function () {
@@ -285,7 +311,23 @@ $(function () {
             Backbone.trigger("country:change", countries);
         }, 500));
 
+    // Handle the grouping menu.
+    d3.select("#grouping")
+        .on("change", function () {
+            Backbone.trigger("group:change", d3.select(this).property("value"));
+        });
+
     app.masterview = new app.views.MasterView({
         el: "#map"
     });
+
+    // Populate the "group by" menu.
+    d3.select("#grouping")
+        .selectAll("option")
+        .data(_.keys(app.masterview.groupFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
 });
