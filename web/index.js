@@ -102,14 +102,27 @@ app.views.MapShot = Backbone.View.extend({
             .data(this.collection.models)
             .enter()
             .append("circle")
-            .style("fill", this.color);
+            .style("fill", this.color)
+            .each(function (d) {
+                $(this).popover({
+                    html: true,
+                    container: "body",
+                    trigger: "hover",
+                    content: "<pre>" + JSON.stringify(d.attributes, null, 4) + "</pre>",
+                    delay: {
+                        show: 100,
+                        hide: 100
+                    }
+                });
+            });
 
         this.g.append("ellipse")
             .datum(this.computeDataEllipse())
             .classed("ellipse", true)
             .style("stroke", this.color)
             .style("fill", this.color)
-            .style("fill-opacity", 0.1);
+            .style("fill-opacity", 0.1)
+            .style("pointer-events", "none");
     }
 });
 
