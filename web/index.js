@@ -52,12 +52,64 @@ app.collections.PostingSet = Backbone.Collection.extend({
 });
 
 app.views.MapShot = Backbone.View.extend({
-    initialize: function () {
-        this.collection.on("reset", this.render, this);
+    initialize: function (options) {
+        this.g = d3.select(this.$el.geojsMap("svg"))
+            .append("g")
+            .attr("id", _.uniqueId("mapshot"));
+
+        this.color = options.color || "black";
+    },
+
+    computeDataEllipse: function () {
+        var data,
+            center,
+            median,
+            medianDev,
+            geoloc,
+            ellipse,
+            eigen;
+
+        data = this.g.selectAll("circle")
+            .data();
+
+        if (data.length === 0) {
+            return;
+        }
+
+        // Extract latlongs to compute data circle.
+        geoloc = data.map(function (d) {
+            return d.get("geolocation");
+        }).filter(function (d) {
+            return d[0] !== 0 || d[1] !== 0;
+        });
+
+        // Geolocated mean.
+        center = geomean(geoloc);
+
+        // Test out the gradient descent thing.
+        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
+        medianDev = mad(geoloc, median.result);
+
+        // Eigensystem.
+        eigen = eigen2x2(covarMat(geoloc));
+
+        // Compute a data ellipse.
+        return dataEllipse(center, eigen);
     },
 
     render: function () {
+        this.g.selectAll("circle")
+            .data(this.collection.models)
+            .enter()
+            .append("circle")
+            .style("fill", this.color);
 
+        this.g.append("ellipse")
+            .datum(this.computeDataEllipse())
+            .classed("ellipse", true)
+            .style("stroke", this.color)
+            .style("fill", this.color)
+            .style("fill-opacity", 0.1);
     }
 });
 
@@ -72,6 +124,7 @@ app.views.MasterView = Backbone.View.extend({
 
         Backbone.on("country:change", this.updateCountries, this);
         Backbone.on("date:change", this.updateDate, this);
+        Backbone.on("group:change", this.updateGroup, this);
 
         this.$el.on("draw", _.bind(this.draw, this));
     },
@@ -116,44 +169,13 @@ app.views.MasterView = Backbone.View.extend({
         this.render();
     },
 
-    computeDataEllipse: function () {
-        var data,
-            center,
-            median,
-            medianDev,
-            geoloc,
-            ellipse,
-            eigen;
-
-        data = this.svg.selectAll("circle")
-            .data();
-
-        if (data.length === 0) {
+    updateGroup: function (group) {
+        if (this.group === group) {
             return;
         }
 
-        // Extract latlongs to compute data circle.
-        geoloc = data.map(function (d) {
-            return d.get("geolocation");
-        }).filter(function (d) {
-            return d[0] !== 0 || d[1] !== 0;
-        });
-
-        // Geolocated mean.
-        center = geomean(geoloc);
-
-        // Test out the gradient descent thing.
-        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
-        medianDev = mad(geoloc, median.result);
-
-        // Eigensystem.
-        eigen = eigen2x2(covarMat(geoloc));
-
-        // Compute a data ellipse.
-        ellipse = dataEllipse(center, eigen);
-        this.svg.append("ellipse")
-            .datum(ellipse)
-            .classed("ellipse", true);
+        this.group = group;
+        this.render();
     },
 
     draw: function () {
@@ -169,9 +191,6 @@ app.views.MasterView = Backbone.View.extend({
                 return pt[0].y;
             })
             .attr("r", 6)
-            .style("fill", function (d) {
-                return that.colors(d.get("country_code"));
-            })
             .style("stroke", "black");
 
         this.svg.selectAll(".ellipse")
@@ -192,9 +211,7 @@ app.views.MasterView = Backbone.View.extend({
             })
             .attr("transform", function (d) {
                 return "rotate(" + d.pixellipse.angle + " " + d.pixellipse.cx + " " + d.pixellipse.cy + ")";
-            })
-            .style("stroke", "black")
-            .style("fill", "none");
+            });
     },
 
     render: function () {
@@ -202,23 +219,47 @@ app.views.MasterView = Backbone.View.extend({
             date: this.date,
             country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
+                var groups;
+
+                // Empty the SVG element.
                 this.svg.selectAll("*")
                     .remove();
 
-                this.svg.selectAll("circle")
-                    .data(me.models)
-                    .enter()
-                    .append("circle");
+                // Group the collection of JobPostings by the grouping function.
+                groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
 
-                this.computeDataEllipse();
+                // Create MapShot views to handle the search results, one per
+                // group.
+                this.subviews = _.map(groups, _.bind(function (group) {
+                    return new app.views.MapShot({
+                        collection: new app.collections.PostingSet(group),
+                        el: this.el,
+                        color: this.colors(tangelo.accessor(this.groupFuncs[this.group])(group[0]))
+                    });
+                }, this));
 
+                // Have them populate the SVG element with dots and data
+                // ellipse.
+                _.each(this.subviews, function (view) {
+                    view.render();
+                });
+
+                // Draw immediately to refresh the screen (further drawing will
+                // occur on pan and zoom events).
                 this.draw();
             }, this)
         });
     },
 
-    countries: "",
-    date: ""
+    countries: [],
+    date: "",
+    group: "None",
+
+    groupFuncs: {
+        "None": {value: 0},
+        "Country": {field: "attributes.country_code"},
+        "Job type": {field: "attributes.type"}
+    }
 });
 
 $(function () {
@@ -272,7 +313,23 @@ $(function () {
             Backbone.trigger("country:change", countries);
         }, 500));
 
+    // Handle the grouping menu.
+    d3.select("#grouping")
+        .on("change", function () {
+            Backbone.trigger("group:change", d3.select(this).property("value"));
+        });
+
     app.masterview = new app.views.MasterView({
         el: "#map"
     });
+
+    // Populate the "group by" menu.
+    d3.select("#grouping")
+        .selectAll("option")
+        .data(_.keys(app.masterview.groupFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
 });
