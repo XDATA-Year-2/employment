@@ -52,10 +52,12 @@ app.collections.PostingSet = Backbone.Collection.extend({
 });
 
 app.views.MapShot = Backbone.View.extend({
-    initialize: function () {
+    initialize: function (options) {
         this.g = d3.select(this.$el.geojsMap("svg"))
             .append("g")
             .attr("id", _.uniqueId("mapshot"));
+
+        this.color = options.color || "black";
     },
 
     computeDataEllipse: function () {
@@ -99,11 +101,15 @@ app.views.MapShot = Backbone.View.extend({
         this.g.selectAll("circle")
             .data(this.collection.models)
             .enter()
-            .append("circle");
+            .append("circle")
+            .style("fill", this.color);
 
         this.g.append("ellipse")
             .datum(this.computeDataEllipse())
-            .classed("ellipse", true);
+            .classed("ellipse", true)
+            .style("stroke", this.color)
+            .style("fill", this.color)
+            .style("fill-opacity", 0.1);
     }
 });
 
@@ -185,9 +191,6 @@ app.views.MasterView = Backbone.View.extend({
                 return pt[0].y;
             })
             .attr("r", 6)
-            .style("fill", function (d) {
-                return that.colors(d.get("country_code"));
-            })
             .style("stroke", "black");
 
         this.svg.selectAll(".ellipse")
@@ -208,9 +211,7 @@ app.views.MasterView = Backbone.View.extend({
             })
             .attr("transform", function (d) {
                 return "rotate(" + d.pixellipse.angle + " " + d.pixellipse.cx + " " + d.pixellipse.cy + ")";
-            })
-            .style("stroke", "black")
-            .style("fill", "none");
+            });
     },
 
     render: function () {
@@ -225,14 +226,15 @@ app.views.MasterView = Backbone.View.extend({
                     .remove();
 
                 // Group the collection of JobPostings by the grouping function.
-                groups = this.jobs.groupBy(this.groupFuncs[this.group]);
+                groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
 
                 // Create MapShot views to handle the search results, one per
                 // group.
                 this.subviews = _.map(groups, _.bind(function (group) {
                     return new app.views.MapShot({
                         collection: new app.collections.PostingSet(group),
-                        el: this.el
+                        el: this.el,
+                        color: this.colors(tangelo.accessor(this.groupFuncs[this.group])(group[0]))
                     });
                 }, this));
 
@@ -254,9 +256,9 @@ app.views.MasterView = Backbone.View.extend({
     group: "None",
 
     groupFuncs: {
-        "None": tangelo.accessor({value: 0}),
-        "Country": tangelo.accessor({field: "attributes.country_code"}),
-        "Job type": tangelo.accessor({field: "attributes.type"})
+        "None": {value: 0},
+        "Country": {field: "attributes.country_code"},
+        "Job type": {field: "attributes.type"}
     }
 });
 
