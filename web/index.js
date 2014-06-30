@@ -1,6 +1,5 @@
-/*jslint browser: true */
-
-/*globals $, tangelo, d3 */
+/*jslint browser: true, nomen: true */
+/*globals tangelo, d3, Backbone, _ */
 
 var app = {};
 app.models = {};
@@ -9,10 +8,14 @@ app.views = {};
 
 app.models.JobPosting = Backbone.Model.extend({
     save: function () {
+        "use strict";
+
         throw new Error("app.models.JobPosting is a read-only model");
     },
 
     destroy: function () {
+        "use strict";
+
         throw new Error("app.models.JobPosting is a read-only model");
     }
 });
@@ -21,6 +24,8 @@ app.collections.PostingSet = Backbone.Collection.extend({
     model: app.models.JobPosting,
 
     initialize: function () {
+        "use strict";
+
         this.on("reset", function () {
             console.log("reset");
         });
@@ -29,6 +34,8 @@ app.collections.PostingSet = Backbone.Collection.extend({
     url: "search/mongo/xdata/employment",
 
     fetch: _.wrap(Backbone.Collection.prototype.fetch, function (fetch, options) {
+        "use strict";
+
         options = options || {};
         _.bind(fetch, this)({
             success: options.success,
@@ -43,16 +50,22 @@ app.collections.PostingSet = Backbone.Collection.extend({
     }),
 
     parse: function (response) {
+        "use strict";
+
         return response.results;
     },
 
     partition: function (pfunc) {
+        "use strict";
+
         return this;
     }
 });
 
 app.views.MapShot = Backbone.View.extend({
     initialize: function (options) {
+        "use strict";
+
         this.g = d3.select(this.$el.geojsMap("svg"))
             .append("g")
             .attr("id", _.uniqueId("mapshot"));
@@ -61,6 +74,8 @@ app.views.MapShot = Backbone.View.extend({
     },
 
     computeDataEllipse: function () {
+        "use strict";
+
         var data,
             center,
             median,
@@ -98,13 +113,15 @@ app.views.MapShot = Backbone.View.extend({
     },
 
     render: function () {
+        "use strict";
+
         this.g.selectAll("circle")
             .data(this.collection.models)
             .enter()
             .append("circle")
             .style("fill", this.color)
             .each(function (d) {
-                $(this).popover({
+                Backbone.$(this).popover({
                     html: true,
                     container: "body",
                     trigger: "hover",
@@ -128,6 +145,8 @@ app.views.MapShot = Backbone.View.extend({
 
 app.views.MasterView = Backbone.View.extend({
     initialize: function (options) {
+        "use strict";
+
         this.$el.geojsMap();
         this.svg = d3.select(this.$el.geojsMap("svg"));
 
@@ -143,10 +162,14 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     latlng2display: function (lat, lng) {
+        "use strict";
+
         return this.$el.geojsMap("latlng2display", geo.latlng(lat, lng));
     },
 
     updateCountries: function (countries) {
+        "use strict";
+
         var i;
 
         // Check to see if the new country data is equal to the old - if so,
@@ -172,6 +195,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     updateDate: function (date) {
+        "use strict";
+
         // Bail if the new date is equal to the old.
         if (this.date === date) {
             return;
@@ -183,6 +208,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     updateGroup: function (group) {
+        "use strict";
+
         if (this.group === group) {
             return;
         }
@@ -192,6 +219,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     draw: function () {
+        "use strict";
+
         var that = this;
 
         this.svg.selectAll("circle")
@@ -228,6 +257,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     render: function () {
+        "use strict";
+
         this.jobs.fetch({
             date: this.date,
             country: JSON.stringify(this.countries),
@@ -275,22 +306,29 @@ app.views.MasterView = Backbone.View.extend({
     }
 });
 
-$(function () {
+Backbone.$(function () {
     "use strict";
 
+    var getSamplingParameters = function () {
+        return {
+            range: d3.select("#history").property("value"),
+            unit: d3.select("#period").property("value")
+        };
+    };
+
     // Create control panel.
-    $("#control-panel").controlPanel();
+    Backbone.$("#control-panel").controlPanel();
 
     // Create a date picker.
     (function () {
         var olddate = null;
 
-        $("#date").datepicker({
+        Backbone.$("#date").datepicker({
             changeYear: true,
             changeMonth: true,
             defaultDate: new Date(2012, 9, 24),
             onSelect: function () {
-                var datestring = $(this).val(),
+                var datestring = Backbone.$(this).val(),
                     comp,
                     date;
 
