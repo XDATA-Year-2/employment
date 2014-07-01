@@ -83,6 +83,16 @@
             </div>
 
             <div class=col-md-2>
+                Going back:
+                <select id=history class=form-control></select>
+                <select id=period class=form-control>
+                    <option>days</option>
+                    <option>weeks</option>
+                    <option>months</option>
+                </select>
+            </div>
+
+            <div class=col-md-2>
                 Country codes: <input id=codes type=text></input>
             </div>
 
@@ -93,7 +103,14 @@
             </div>
 
             <div class=col-md-2>
-                Count: <span id=count></span>
+                Slice by:
+                <select id=slicing class=form-control>
+                </select>
+            </div>
+
+            <div class=col-md-2>
+                Limit: <input id=limit type=text></input>
+                Count: <span id=count>0</span>
             </div>
         </div>
     </div>

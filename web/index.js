@@ -36,17 +36,32 @@ app.collections.PostingSet = Backbone.Collection.extend({
     fetch: _.wrap(Backbone.Collection.prototype.fetch, function (fetch, options) {
         "use strict";
 
+        var limit,
+            params;
+
+        params = {
+            date: options.date || "null",
+            country: options.country || "null",
+            query: options.query || "null",
+            limit: options.limit || 1000
+        };
+
+        limit = +d3.select("#limit")
+            .property("value");
+        limit = limit || 0;
+
+        if (limit > 0) {
+            params.limit = limit;
+        } else {
+            d3.select("#limit")
+                .property("value", "");
+        }
+
         options = options || {};
         _.bind(fetch, this)({
             success: options.success,
-            data: {
-                date: options.date || "null",
-                country: options.country || "null",
-                query: options.query || "null",
-                limit: options.limit || 1000
-            }
+            data: params
         });
-
     }),
 
     parse: function (response) {
@@ -157,8 +172,63 @@ app.views.MasterView = Backbone.View.extend({
         Backbone.on("country:change", this.updateCountries, this);
         Backbone.on("date:change", this.updateDate, this);
         Backbone.on("group:change", this.updateGroup, this);
+        Backbone.on("slice:change", this.updateSlice, this);
+        Backbone.on("sample:change", this.updateSample, this);
+        this.jobs.on("sync", function (postings) {
+            d3.select("#count")
+                .text(postings.length);
+        });
 
         this.$el.on("draw", _.bind(this.draw, this));
+    },
+
+    sliceFunction: function (slice) {
+        var comp;
+
+        if (slice === "None") {
+            return tangelo.accessor({value: 0});
+        }
+
+        comp = slice.split(" ");
+        if (comp.length === 1) {
+            comp[1] = comp[0];
+            comp[0] = "Single";
+        }
+
+        if (comp[0] === "Single") {
+            comp[0] = 1;
+        } else if(comp[0] === "Double") {
+            comp[0] = 2;
+        } else if(comp[0] === "Triple") {
+            comp[0] = 3;
+        } else if(comp[0] === "Quadruple") {
+            comp[0] = 4;
+        } else {
+            throw "fatal error: comp[0] was '" + comp[0] + "'";
+        }
+
+        if (comp[1] === "Days") {
+            comp[1] = 1;
+        } else if (comp[1] === "Weeks") {
+            comp[1] = 7;
+        } else if (comp[1] === "Months") {
+            comp[1] = 30;
+        } else if (comp[1] === "Years") {
+            comp[1] = 365;
+        } else {
+            throw "fatal error: comp[1] was '" + comp[1] + "'";
+        }
+
+        return function (datestr) {
+            var datecomp = datestr.split("-"),
+                year = +datecomp[0],
+                month = +datecomp[1] - 1,
+                day = +datecomp[2];
+
+            seconds = new Date(year, month, day).getTime() / 1000;
+
+            return seconds / comp[0] / comp[1];
+        };
     },
 
     latlng2display: function (lat, lng) {
@@ -218,6 +288,21 @@ app.views.MasterView = Backbone.View.extend({
         this.render();
     },
 
+    updateSlice: function (slice) {
+        "use strict";
+
+        if (this.slice === slice) {
+            return;
+        }
+
+        this.slice = slice;
+        this.render();
+    },
+
+    updateSample: function (sample) {
+        console.log(sample);
+    },
+
     draw: function () {
         "use strict";
 
@@ -272,6 +357,8 @@ app.views.MasterView = Backbone.View.extend({
                 // Group the collection of JobPostings by the grouping function.
                 groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
 
+                console.log(this.sliceFuncs[this.slice]);
+
                 // Create MapShot views to handle the search results, one per
                 // group.
                 this.subviews = _.map(groups, _.bind(function (group) {
@@ -298,11 +385,32 @@ app.views.MasterView = Backbone.View.extend({
     countries: [],
     date: "",
     group: "None",
+    slice: "None",
 
     groupFuncs: {
         "None": {value: 0},
         "Country": {field: "attributes.country_code"},
         "Job type": {field: "attributes.type"}
+    },
+
+    sliceFuncs: {
+        "None": null,
+        "Days": null,
+        "Double Days": null,
+        "Triple Days": null,
+        "Quadruple Days": null,
+        "Weeks": null,
+        "Double Weeks": null,
+        "Triple Weeks": null,
+        "Quadruple Weeks": null,
+        "Months": null,
+        "Double Months": null,
+        "Triple Months": null,
+        "Quadruple Months": null,
+        "Years": null,
+        "Double Years": null,
+        "Triple Years": null,
+        "Quadruple Years": null
     }
 });
 
@@ -370,6 +478,22 @@ Backbone.$(function () {
             Backbone.trigger("group:change", d3.select(this).property("value"));
         });
 
+    d3.select("#slicing")
+        .on("change", function () {
+            Backbone.trigger("slice:change", d3.select(this).property("value"));
+        });
+
+    // Handle the history menus.
+    d3.select("#history")
+        .on("change", function () {
+            Backbone.trigger("sample:change", getSamplingParameters());
+        });
+
+    d3.select("#period")
+        .on("change", function () {
+            Backbone.trigger("sample:change", getSamplingParameters());
+        });
+
     app.masterview = new app.views.MasterView({
         el: "#map"
     });
@@ -378,6 +502,26 @@ Backbone.$(function () {
     d3.select("#grouping")
         .selectAll("option")
         .data(_.keys(app.masterview.groupFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
+
+    // Populate the "slice by" menu.
+    d3.select("#slicing")
+        .selectAll("option")
+        .data(_.keys(app.masterview.sliceFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
+
+    // Populate the history menus.
+    d3.select("#history")
+        .selectAll("option")
+        .data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
         .enter()
         .append("option")
         .text(function (d) {
