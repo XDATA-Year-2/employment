@@ -41,6 +41,7 @@ app.collections.PostingSet = Backbone.Collection.extend({
 
         params = {
             date: options.date || "null",
+            history: options.history || 0,
             country: options.country || "null",
             query: options.query || "null",
             limit: options.limit || 1000
@@ -86,6 +87,8 @@ app.views.MapShot = Backbone.View.extend({
             .attr("id", _.uniqueId("mapshot"));
 
         this.color = options.color || "black";
+        this.opacity = options.opacity || 1.0;
+        this.renderDots = options.renderDots === undefined ? true : options.renderDots;
     },
 
     computeDataEllipse: function () {
@@ -99,8 +102,7 @@ app.views.MapShot = Backbone.View.extend({
             ellipse,
             eigen;
 
-        data = this.g.selectAll("circle")
-            .data();
+        data = this.collection.models;
 
         if (data.length === 0) {
             return;
@@ -112,6 +114,10 @@ app.views.MapShot = Backbone.View.extend({
         }).filter(function (d) {
             return d[0] !== 0 || d[1] !== 0;
         });
+
+        if (geoloc.length === 0) {
+            return;
+        }
 
         // Geolocated mean.
         center = geomean(geoloc);
@@ -130,31 +136,40 @@ app.views.MapShot = Backbone.View.extend({
     render: function () {
         "use strict";
 
-        this.g.selectAll("circle")
-            .data(this.collection.models)
-            .enter()
-            .append("circle")
-            .style("fill", this.color)
-            .each(function (d) {
-                Backbone.$(this).popover({
-                    html: true,
-                    container: "body",
-                    trigger: "hover",
-                    content: "<pre>" + JSON.stringify(d.attributes, null, 4) + "</pre>",
-                    delay: {
-                        show: 100,
-                        hide: 100
-                    }
-                });
-            });
+        var ellipse;
 
-        this.g.append("ellipse")
-            .datum(this.computeDataEllipse())
-            .classed("ellipse", true)
-            .style("stroke", this.color)
-            .style("fill", this.color)
-            .style("fill-opacity", 0.1)
-            .style("pointer-events", "none");
+        if (this.renderDots) {
+            this.g.selectAll("circle")
+                .data(this.collection.models)
+                .enter()
+                .append("circle")
+                .style("fill", this.color)
+                .style("opacity", this.opacity)
+                .each(function (d) {
+                    Backbone.$(this).popover({
+                        html: true,
+                        container: "body",
+                        trigger: "hover",
+                        content: "<pre>" + JSON.stringify(d.attributes, null, 4) + "</pre>",
+                        delay: {
+                            show: 100,
+                            hide: 100
+                        }
+                    });
+                });
+        }
+
+        ellipse = this.computeDataEllipse();
+        if (ellipse) {
+            this.g.append("ellipse")
+                .datum(ellipse)
+                .classed("ellipse", true)
+                .style("stroke", this.color)
+                .style("stroke-opacity", this.opacity)
+                .style("fill", this.color)
+                .style("fill-opacity", 0.1 * this.opacity)
+                .style("pointer-events", "none");
+        }
     }
 });
 
@@ -162,12 +177,65 @@ app.views.MasterView = Backbone.View.extend({
     initialize: function (options) {
         "use strict";
 
+        var sliceFunction = function (slice) {
+            var comp;
+
+            if (slice === "None") {
+                return tangelo.accessor({value: 0});
+            }
+
+            comp = slice.split(" ");
+            if (comp.length === 1) {
+                comp[1] = comp[0];
+                comp[0] = "Single";
+            }
+
+            if (comp[0] === "Single") {
+                comp[0] = 1;
+            } else if(comp[0] === "Double") {
+                comp[0] = 2;
+            } else if(comp[0] === "Triple") {
+                comp[0] = 3;
+            } else if(comp[0] === "Quadruple") {
+                comp[0] = 4;
+            } else {
+                throw "fatal error: comp[0] was '" + comp[0] + "'";
+            }
+
+            if (comp[1] === "Days") {
+                comp[1] = 1;
+            } else if (comp[1] === "Weeks") {
+                comp[1] = 7;
+            } else if (comp[1] === "Months") {
+                comp[1] = 30;
+            } else if (comp[1] === "Years") {
+                comp[1] = 365;
+            } else {
+                throw "fatal error: comp[1] was '" + comp[1] + "'";
+            }
+
+            return function (datestr) {
+                var datecomp = datestr.split("-"),
+                    year = +datecomp[0],
+                    month = +datecomp[1] - 1,
+                    day = +datecomp[2];
+
+                seconds = new Date(year, month, day).getTime() / 1000;
+
+                return seconds / comp[0] / comp[1];
+            };
+        };
+
         this.$el.geojsMap();
         this.svg = d3.select(this.$el.geojsMap("svg"));
 
         this.jobs = new app.collections.PostingSet();
 
         this.colors = d3.scale.category10();
+
+        $.each(this.sliceFuncs, _.bind(function (k) {
+            this.sliceFuncs[k] = sliceFunction(k);
+        }, this));
 
         Backbone.on("country:change", this.updateCountries, this);
         Backbone.on("date:change", this.updateDate, this);
@@ -180,55 +248,6 @@ app.views.MasterView = Backbone.View.extend({
         });
 
         this.$el.on("draw", _.bind(this.draw, this));
-    },
-
-    sliceFunction: function (slice) {
-        var comp;
-
-        if (slice === "None") {
-            return tangelo.accessor({value: 0});
-        }
-
-        comp = slice.split(" ");
-        if (comp.length === 1) {
-            comp[1] = comp[0];
-            comp[0] = "Single";
-        }
-
-        if (comp[0] === "Single") {
-            comp[0] = 1;
-        } else if(comp[0] === "Double") {
-            comp[0] = 2;
-        } else if(comp[0] === "Triple") {
-            comp[0] = 3;
-        } else if(comp[0] === "Quadruple") {
-            comp[0] = 4;
-        } else {
-            throw "fatal error: comp[0] was '" + comp[0] + "'";
-        }
-
-        if (comp[1] === "Days") {
-            comp[1] = 1;
-        } else if (comp[1] === "Weeks") {
-            comp[1] = 7;
-        } else if (comp[1] === "Months") {
-            comp[1] = 30;
-        } else if (comp[1] === "Years") {
-            comp[1] = 365;
-        } else {
-            throw "fatal error: comp[1] was '" + comp[1] + "'";
-        }
-
-        return function (datestr) {
-            var datecomp = datestr.split("-"),
-                year = +datecomp[0],
-                month = +datecomp[1] - 1,
-                day = +datecomp[2];
-
-            seconds = new Date(year, month, day).getTime() / 1000;
-
-            return seconds / comp[0] / comp[1];
-        };
     },
 
     latlng2display: function (lat, lng) {
@@ -348,16 +367,18 @@ app.views.MasterView = Backbone.View.extend({
             date: this.date,
             country: JSON.stringify(this.countries),
             success: _.bind(function (me) {
-                var groups;
+                var groups,
+                    renderDots;
 
                 // Empty the SVG element.
                 this.svg.selectAll("*")
                     .remove();
 
+                // Decide whether to render the dots.
+                renderDots = this.jobs.length <= 800;
+
                 // Group the collection of JobPostings by the grouping function.
                 groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
-
-                console.log(this.sliceFuncs[this.slice]);
 
                 // Create MapShot views to handle the search results, one per
                 // group.
@@ -365,7 +386,9 @@ app.views.MasterView = Backbone.View.extend({
                     return new app.views.MapShot({
                         collection: new app.collections.PostingSet(group),
                         el: this.el,
-                        color: this.colors(tangelo.accessor(this.groupFuncs[this.group])(group[0]))
+                        color: this.colors(tangelo.accessor(this.groupFuncs[this.group])(group[0])),
+                        opacity: 1.0,
+                        renderDots: renderDots
                     });
                 }, this));
 

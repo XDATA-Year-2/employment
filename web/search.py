@@ -5,8 +5,8 @@ import tangelo
 
 
 @tangelo.return_type(dumps)
-@tangelo.types(query=loads, country=loads, limit=int)
-def run(host, db, coll, date=None, country=None, query=None, limit=100):
+@tangelo.types(history=int, query=loads, country=loads, limit=int)
+def run(host, db, coll, date=None, history=0, country=None, query=None, limit=100):
     # First establish a connection.
     try:
         c = pymongo.mongo_client.MongoClient(host=host)[db][coll]
@@ -21,11 +21,17 @@ def run(host, db, coll, date=None, country=None, query=None, limit=100):
     if date is not None:
         # Parse the date into a datetime object.
         try:
-            d = datetime.datetime.strptime(date, "%Y-%m-%d")
+            enddate = datetime.datetime.strptime(date, "%Y-%m-%d")
         except ValueError as e:
             return {"error": repr(e)}
 
-        terms.append({"posted": d})
+        # Go back in history from this date by the number of days given in the
+        # "history" parameter.
+        startdate = enddate - datetime.timedelta(history)
+
+        #terms.append({"posted": enddate})
+        terms.append({"$and": [{"posted": {"$lte": enddate}},
+                               {"posted": {"$gte": startdate}}]})
 
     # If there is a list of country codes, add them as terms.
     if country is not None and len(country) > 0:
