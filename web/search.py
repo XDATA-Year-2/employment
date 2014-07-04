@@ -11,7 +11,6 @@ import tangelo
 
 def compact_dumps(o):
     return dumps(o, separators=(",", ":"))
-    #return dumps(o, indent=4)
 
 def group_by(items, key):
     result = {}
@@ -42,7 +41,11 @@ def compute_data_ellipse(locs):
 
     eigen = A.eigen2x2(A.covarMat(locs))
 
-    return A.data_ellipse(center, eigen)
+    ellipse = A.data_ellipse(center, eigen)
+    if ellipse is not None:
+        ellipse["steps"] = median["steps"]
+
+    return ellipse
 
 def decimate(groups, fraction, randomize=False):
     if not randomize:

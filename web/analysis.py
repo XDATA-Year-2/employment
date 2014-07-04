@@ -82,7 +82,7 @@ def data_ellipse(center, eigensystem):
             "cy": center[1],
             "rx": math.sqrt(eigval[0]),
             "ry": math.sqrt(eigval[1]),
-            "angle": "angle"}
+            "angle": angle}
 
 def dist_grad(pts, pt):
     x, y = pt
