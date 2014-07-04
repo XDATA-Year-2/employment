@@ -6,6 +6,7 @@ import functools
 import itertools
 import math
 import pymongo
+import random
 import tangelo
 
 def compact_dumps(o):
@@ -43,9 +44,19 @@ def compute_data_ellipse(locs):
 
     return A.data_ellipse(center, eigen)
 
+def decimate(groups, fraction, randomize=False):
+    if not randomize:
+        random.seed(0)
+
+    for group in groups:
+        for slice in groups[group]:
+            data = groups[group][slice]["geoloc"]
+            if len(data) > 5:
+                groups[group][slice]["geoloc"] = random.sample(data, max(1, int(fraction * len(data))))
+
 @tangelo.return_type(compact_dumps)
 @tangelo.types(history=int, country=loads, limit=int, query=loads, sample=int, ellipse=loads)
-def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceBy=None, limit=100, query=None, sample=None, ellipse=False):
+def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceBy=None, limit=100, query=None, sample=0, ellipse=False):
     # First establish a connection.
     try:
         c = pymongo.mongo_client.MongoClient(host=host)[db][coll]
@@ -148,6 +159,10 @@ def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceB
             geoloc = map(lambda x: x["geolocation"], slice)
             groups[groupname][slicename] = {"geoloc": geoloc,
                                             "ellipse": compute_data_ellipse(geoloc)}
+
+    nrecs = it.count(with_limit_and_skip=True)
+    if sample != 0 and sample < nrecs:
+        decimate(groups, float(sample) / nrecs)
 
     return groups
 
