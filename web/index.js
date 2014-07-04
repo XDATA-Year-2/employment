@@ -214,15 +214,12 @@ app.views.MasterView = Backbone.View.extend({
                 throw "fatal error: comp[1] was '" + comp[1] + "'";
             }
 
-            return function (datestr) {
-                var datecomp = datestr.split("-"),
-                    year = +datecomp[0],
-                    month = +datecomp[1] - 1,
-                    day = +datecomp[2];
+            return function (model) {
+                var date = model.attributes.posted.$date,
+                    seconds = date / 1000,
+                    days = Math.floor(seconds / 86400);
 
-                seconds = new Date(year, month, day).getTime() / 1000;
-
-                return seconds / comp[0] / comp[1];
+                return Math.floor(days / comp[0] / comp[1]);
             };
         };
 
@@ -319,7 +316,19 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     updateSample: function (sample) {
-        console.log(sample);
+        var history,
+            table = {
+                "days" : 1,
+                "weeks": 7,
+                "months": 30
+            };
+
+        history = +sample.range * table[sample.unit];
+
+        if (this.history !== history) {
+            this.history = history;
+            this.render();
+        }
     },
 
     draw: function () {
@@ -366,6 +375,8 @@ app.views.MasterView = Backbone.View.extend({
         this.jobs.fetch({
             date: this.date,
             country: JSON.stringify(this.countries),
+            history: this.history,
+            limit: 0,
             success: _.bind(function (me) {
                 var groups,
                     renderDots;
@@ -379,6 +390,13 @@ app.views.MasterView = Backbone.View.extend({
 
                 // Group the collection of JobPostings by the grouping function.
                 groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
+
+/*                // Group again by the time slicing function.*/
+                //_.each(groups, function (group, label) {
+                    //groups[label] = _.groupBy(group, this.sliceFuncs[this.slice]);
+                //}, this);
+
+                //app.groups = groups;
 
                 // Create MapShot views to handle the search results, one per
                 // group.
@@ -409,6 +427,7 @@ app.views.MasterView = Backbone.View.extend({
     date: "",
     group: "None",
     slice: "None",
+    history: 0,
 
     groupFuncs: {
         "None": {value: 0},
