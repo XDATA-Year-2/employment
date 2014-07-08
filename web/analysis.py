@@ -84,6 +84,9 @@ def data_ellipse(center, eigensystem):
             "ry": math.sqrt(eigval[1]),
             "angle": angle}
 
+def sum_distances(x, pts):
+    return sum([magnitude([x[0] - p[0], x[1] - p[1]]) for p in pts])
+
 def dist_grad(pts, pt):
     x, y = pt
     return reduce(lambda x, y: [x[0] + y[0], x[1] + y[1]], [normalize([x - xi, y - yi]) for xi, yi in pts])

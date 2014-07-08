@@ -7,6 +7,7 @@ import itertools
 import math
 import pymongo
 import random
+import scipy.optimize
 import tangelo
 
 def compact_dumps(o):
@@ -36,15 +37,17 @@ def compute_data_ellipse(locs):
     center = A.geomean(locs)
 
     #median = A.gradient_descent(functools.partial(A.dist_grad, locs), center, 0, 1000, 1e-8)
-    median = A.gradient_descent_iter(functools.partial(A.dist_grad, locs), center, 0, 1000, 1e-8)
-    median_dev = A.mad(locs, median["result"])
+#    median = A.gradient_descent_iter(functools.partial(A.dist_grad, locs), center, 0, 1000, 1e-8)
+    #median_dev = A.mad(locs, median["result"])
+
+    # Run a scipy optimizer to compute the median and median absolute deviation.
+    opt = scipy.optimize.fmin(A.sum_distances, x0=center, args=(locs,), full_output=True)
+    median = list(opt[0])
+    median_dev = opt[1]
 
     eigen = A.eigen2x2(A.covarMat(locs))
 
     ellipse = A.data_ellipse(center, eigen)
-    if ellipse is not None:
-        ellipse["steps"] = median["steps"]
-
     return ellipse
 
 def decimate(groups, fraction, randomize=False):
@@ -59,7 +62,7 @@ def decimate(groups, fraction, randomize=False):
 
 @tangelo.return_type(compact_dumps)
 @tangelo.types(history=int, country=loads, limit=int, query=loads, sample=int, ellipse=loads)
-def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceBy=None, limit=100, query=None, sample=0, ellipse=False):
+def run(host, db, coll, date=None, history=0, country=None, groupBy="", sliceBy=None, limit=100, query=None, sample=0, ellipse=False):
     # First establish a connection.
     try:
         c = pymongo.mongo_client.MongoClient(host=host)[db][coll]
@@ -107,14 +110,14 @@ def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceB
     fields = {"_id": False,
               "posted": True,
               "geolocation": True}
-    if groupBy is not None:
+    if groupBy != "":
         fields[groupBy] = True
 
     # Perform the search.
     it = c.find(spec=search, limit=limit, fields=fields)
 
     # Group the records by the grouping criterion.
-    if groupBy is None:
+    if groupBy == "":
         grouper = lambda x: 0
     else:
         grouper = lambda x: x[groupBy]
@@ -123,34 +126,12 @@ def run(host, db, coll, date=None, history=0, country=None, groupBy=None, sliceB
     # Group the groups by the time slicing criterion.
     #
     # First develop the correct parameters from the name.
-    if sliceBy is None:
+    if sliceBy is "":
         slicer = lambda x: 0
     else:
-        parts = sliceBy.split(" ")
-        if len(parts) == 1:
-            parts.append(parts[0])
-            parts[0] = "Single"
-
-        # Compute the multiplier from the first word in the slicer name.
-        multiplicity = {"Single": 1,
-                        "Double": 2,
-                        "Triple": 3,
-                        "Quadruple": 4}
-        multiplier = multiplicity.get(parts[0])
-        if multiplier is None:
-            return None
-
-        # Compute the unit value (in days) from the second word.
-        units = {"Days": 1,
-                 "Weeks": 7,
-                 "Months": 30}
-        unit = units.get(parts[1])
-        if unit is None:
-            return None
-
         # Create a function that gives the number of slices (of time) since the
         # epoch for a given record's posting date.
-        slicer = lambda x: int(calendar.timegm(x["posted"].timetuple()) / 86400 / multiplier / unit)
+        slicer = lambda x: int(calendar.timegm(x["posted"].timetuple()) / 86400 / int(sliceBy))
 
     # Group each group by this time slicing function.
     for group in groups:
