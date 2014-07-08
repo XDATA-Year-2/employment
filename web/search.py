@@ -126,7 +126,7 @@ def run(host, db, coll, date=None, history=0, country=None, groupBy="", sliceBy=
     # Group the groups by the time slicing criterion.
     #
     # First develop the correct parameters from the name.
-    if sliceBy is "":
+    if sliceBy == "":
         slicer = lambda x: 0
     else:
         # Create a function that gives the number of slices (of time) since the
