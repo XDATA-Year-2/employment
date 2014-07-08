@@ -1,152 +1,97 @@
-/*jslint browser: true */
-
-/*globals $, tangelo, d3 */
+/*jslint browser: true, nomen: true */
+/*globals tangelo, d3, Backbone, _ */
 
 var app = {};
-app.models = {};
-app.collections = {};
 app.views = {};
-
-app.models.JobPosting = Backbone.Model.extend({
-    save: function () {
-        throw new Error("app.models.JobPosting is a read-only model");
-    },
-
-    destroy: function () {
-        throw new Error("app.models.JobPosting is a read-only model");
-    }
-});
-
-app.collections.PostingSet = Backbone.Collection.extend({
-    model: app.models.JobPosting,
-
-    initialize: function () {
-        this.on("reset", function () {
-            console.log("reset");
-        });
-    },
-
-    url: "search/mongo/xdata/employment",
-
-    fetch: _.wrap(Backbone.Collection.prototype.fetch, function (fetch, options) {
-        options = options || {};
-        _.bind(fetch, this)({
-            success: options.success,
-            data: {
-                date: options.date || "null",
-                country: options.country || "null",
-                query: options.query || "null",
-                limit: options.limit || 1000
-            }
-        });
-
-    }),
-
-    parse: function (response) {
-        return response.results;
-    },
-
-    partition: function (pfunc) {
-        return this;
-    }
-});
 
 app.views.MapShot = Backbone.View.extend({
     initialize: function (options) {
+        "use strict";
+
         this.g = d3.select(this.$el.geojsMap("svg"))
             .append("g")
             .attr("id", _.uniqueId("mapshot"));
 
         this.color = options.color || "black";
-    },
+        this.opacity = options.opacity || 1.0;
+        this.renderDots = options.renderDots === undefined ? true : options.renderDots;
 
-    computeDataEllipse: function () {
-        var data,
-            center,
-            median,
-            medianDev,
-            geoloc,
-            ellipse,
-            eigen;
+        this.group = options.group;
 
-        data = this.g.selectAll("circle")
-            .data();
+        this.geoloc = options.geoloc;
+        this.ellipse = options.ellipse;
 
-        if (data.length === 0) {
-            return;
-        }
-
-        // Extract latlongs to compute data circle.
-        geoloc = data.map(function (d) {
-            return d.get("geolocation");
-        }).filter(function (d) {
-            return d[0] !== 0 || d[1] !== 0;
-        });
-
-        // Geolocated mean.
-        center = geomean(geoloc);
-
-        // Test out the gradient descent thing.
-        median = gradientDescent(distGrad.bind(null, geoloc), center, 0, 1000, 1e-8);
-        medianDev = mad(geoloc, median.result);
-
-        // Eigensystem.
-        eigen = eigen2x2(covarMat(geoloc));
-
-        // Compute a data ellipse.
-        return dataEllipse(center, eigen);
+        console.log(this);
     },
 
     render: function () {
-        this.g.selectAll("circle")
-            .data(this.collection.models)
-            .enter()
-            .append("circle")
-            .style("fill", this.color)
-            .each(function (d) {
-                $(this).popover({
-                    html: true,
-                    container: "body",
-                    trigger: "hover",
-                    content: "<pre>" + JSON.stringify(d.attributes, null, 4) + "</pre>",
-                    delay: {
-                        show: 100,
-                        hide: 100
+        "use strict";
+
+        var that = this;
+
+        if (this.renderDots) {
+            this.g.selectAll("circle")
+                .data(this.geoloc)
+                .enter()
+                .append("circle")
+                .style("fill", this.color)
+                .style("opacity", this.opacity)
+                .each(function () {
+                    if (that.group !== "0") {
+                        Backbone.$(this).popover({
+                            html: true,
+                            container: "body",
+                            trigger: "hover",
+                            content: "<pre>" + that.group + "</pre>",
+                            delay: {
+                                show: 100,
+                                hide: 100
+                            }
+                        });
                     }
                 });
-            });
+        }
 
-        this.g.append("ellipse")
-            .datum(this.computeDataEllipse())
-            .classed("ellipse", true)
-            .style("stroke", this.color)
-            .style("fill", this.color)
-            .style("fill-opacity", 0.1)
-            .style("pointer-events", "none");
+        if (this.ellipse) {
+            this.g.append("ellipse")
+                .datum(this.ellipse)
+                .classed("ellipse", true)
+                .style("stroke", this.color)
+                .style("stroke-opacity", this.opacity)
+                .style("fill", this.color)
+                .style("fill-opacity", 0.1 * this.opacity)
+                .style("pointer-events", "none");
+        }
     }
 });
 
 app.views.MasterView = Backbone.View.extend({
     initialize: function (options) {
+        "use strict";
+
         this.$el.geojsMap();
         this.svg = d3.select(this.$el.geojsMap("svg"));
-
-        this.jobs = new app.collections.PostingSet();
 
         this.colors = d3.scale.category10();
 
         Backbone.on("country:change", this.updateCountries, this);
         Backbone.on("date:change", this.updateDate, this);
         Backbone.on("group:change", this.updateGroup, this);
+        Backbone.on("slice:change", this.updateSlice, this);
+        Backbone.on("sample:change", this.updateSample, this);
 
         this.$el.on("draw", _.bind(this.draw, this));
     },
 
     latlng2display: function (lat, lng) {
+        "use strict";
+
         return this.$el.geojsMap("latlng2display", geo.latlng(lat, lng));
     },
 
     updateCountries: function (countries) {
+        "use strict";
+
         var i;
 
         // Check to see if the new country data is equal to the old - if so,
@@ -172,6 +117,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     updateDate: function (date) {
+        "use strict";
+
         // Bail if the new date is equal to the old.
         if (this.date === date) {
             return;
@@ -183,6 +130,8 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     updateGroup: function (group) {
+        "use strict";
+
         if (this.group === group) {
             return;
         }
@@ -191,16 +140,46 @@ app.views.MasterView = Backbone.View.extend({
         this.render();
     },
 
+    updateSlice: function (slice) {
+        "use strict";
+
+        if (this.slice === slice) {
+            return;
+        }
+
+        this.slice = slice;
+        this.render();
+    },
+
+    updateSample: function (sample) {
+        var history,
+            table = {
+                "days" : 1,
+                "weeks": 7,
+                "months": 30
+            };
+
+        history = +sample.range * table[sample.unit];
+
+        if (this.history !== history) {
+            this.history = history;
+            this.render();
+        }
+    },
+
     draw: function () {
+        "use strict";
+
         var that = this;
 
         this.svg.selectAll("circle")
             .attr("cx", function (d) {
-                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                //var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                var pt = that.latlng2display(d[1], d[0]);
                 return pt[0].x;
             })
             .attr("cy", function (d) {
-                var pt = that.latlng2display(d.get("geolocation")[1], d.get("geolocation")[0]);
+                var pt = that.latlng2display(d[1], d[0]);
                 return pt[0].y;
             })
             .attr("r", 6)
@@ -228,69 +207,111 @@ app.views.MasterView = Backbone.View.extend({
     },
 
     render: function () {
-        this.jobs.fetch({
-            date: this.date,
-            country: JSON.stringify(this.countries),
-            success: _.bind(function (me) {
-                var groups;
+        "use strict";
 
-                // Empty the SVG element.
-                this.svg.selectAll("*")
-                    .remove();
+        console.log("starting render");
 
-                // Group the collection of JobPostings by the grouping function.
-                groups = this.jobs.groupBy(tangelo.accessor(this.groupFuncs[this.group]));
+        if (this.date !== "") {
+            console.log("ajaxing");
+            Backbone.$.ajax({
+                url: "search/mongo/xdata/employment",
+                data: {
+                    date: this.date,
+                    country: JSON.stringify(this.countries),
+                    history: this.history,
+                    groupBy: this.groupFuncs[this.group],
+                    sliceBy: this.sliceFuncs[this.slice],
+                    limit: 1000,
+                    sample: 500
+                },
+                method: "GET",
+                dataType: "json",
+                success: _.bind(function (groups) {
+                    var keys;
 
-                // Create MapShot views to handle the search results, one per
-                // group.
-                this.subviews = _.map(groups, _.bind(function (group) {
-                    return new app.views.MapShot({
-                        collection: new app.collections.PostingSet(group),
-                        el: this.el,
-                        color: this.colors(tangelo.accessor(this.groupFuncs[this.group])(group[0]))
+                    console.log(groups);
+
+                    this.subviews = _.flatten(_.map(groups, _.bind(function (group, name) {
+                        keys = _.keys(group).sort();
+
+                        return _.map(keys, _.bind(function (key, i) {
+                            return new app.views.MapShot({
+                                geoloc: group[key].geoloc,
+                                ellipse: group[key].ellipse,
+                                el: this.el,
+                                group: name,
+                                color: this.colors(name),
+                                opacity: (i + 1) / keys.length,
+                                renderDots: true
+                            });
+                        }, this))
+                    }, this)));
+
+                    _.each(this.subviews, function (view) {
+                        view.render();
                     });
-                }, this));
 
-                // Have them populate the SVG element with dots and data
-                // ellipse.
-                _.each(this.subviews, function (view) {
-                    view.render();
-                });
-
-                // Draw immediately to refresh the screen (further drawing will
-                // occur on pan and zoom events).
-                this.draw();
-            }, this)
-        });
+                }, this)
+            });
+        }
     },
 
     countries: [],
     date: "",
     group: "None",
+    slice: "None",
+    history: 0,
 
     groupFuncs: {
-        "None": {value: 0},
-        "Country": {field: "attributes.country_code"},
-        "Job type": {field: "attributes.type"}
+        "None": null,
+        "Country": "country_code",
+        "Job type": "type"
+    },
+
+    sliceFuncs: {
+        "None": null,
+        "Days": 1,
+        "Double Days": 2,
+        "Triple Days": 3,
+        "Quadruple Days": 4,
+        "Weeks": 7,
+        "Double Weeks": 14,
+        "Triple Weeks": 21,
+        "Quadruple Weeks": 28,
+        "Months": 30,
+        "Double Months": 60,
+        "Triple Months": 90,
+        "Quadruple Months": 120,
+        "Years": 365,
+        "Double Years": 2 * 365,
+        "Triple Years": 3 * 365,
+        "Quadruple Years": 4 * 365
     }
 });
 
-$(function () {
+Backbone.$(function () {
     "use strict";
 
+    var getSamplingParameters = function () {
+        return {
+            range: d3.select("#history").property("value"),
+            unit: d3.select("#period").property("value")
+        };
+    };
+
     // Create control panel.
-    $("#control-panel").controlPanel();
+    Backbone.$("#control-panel").controlPanel();
 
     // Create a date picker.
     (function () {
         var olddate = null;
 
-        $("#date").datepicker({
+        Backbone.$("#date").datepicker({
             changeYear: true,
             changeMonth: true,
             defaultDate: new Date(2012, 9, 24),
             onSelect: function () {
-                var datestring = $(this).val(),
+                var datestring = Backbone.$(this).val(),
                     comp,
                     date;
 
@@ -332,6 +353,22 @@ $(function () {
             Backbone.trigger("group:change", d3.select(this).property("value"));
         });
 
+    d3.select("#slicing")
+        .on("change", function () {
+            Backbone.trigger("slice:change", d3.select(this).property("value"));
+        });
+
+    // Handle the history menus.
+    d3.select("#history")
+        .on("change", function () {
+            Backbone.trigger("sample:change", getSamplingParameters());
+        });
+
+    d3.select("#period")
+        .on("change", function () {
+            Backbone.trigger("sample:change", getSamplingParameters());
+        });
+
     app.masterview = new app.views.MasterView({
         el: "#map"
     });
@@ -340,6 +377,26 @@ $(function () {
     d3.select("#grouping")
         .selectAll("option")
         .data(_.keys(app.masterview.groupFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
+
+    // Populate the "slice by" menu.
+    d3.select("#slicing")
+        .selectAll("option")
+        .data(_.keys(app.masterview.sliceFuncs))
+        .enter()
+        .append("option")
+        .text(function (d) {
+            return d;
+        });
+
+    // Populate the history menus.
+    d3.select("#history")
+        .selectAll("option")
+        .data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
         .enter()
         .append("option")
         .text(function (d) {
