@@ -36,10 +36,6 @@ def compute_data_ellipse(locs):
 
     center = A.geomean(locs)
 
-    #median = A.gradient_descent(functools.partial(A.dist_grad, locs), center, 0, 1000, 1e-8)
-#    median = A.gradient_descent_iter(functools.partial(A.dist_grad, locs), center, 0, 1000, 1e-8)
-    #median_dev = A.mad(locs, median["result"])
-
     # Run a scipy optimizer to compute the median and median absolute deviation.
     opt = scipy.optimize.fmin(A.sum_distances, x0=center, args=(locs,), full_output=True)
     median = list(opt[0])
@@ -149,74 +145,3 @@ def run(host, db, coll, date=None, history=0, country=None, groupBy="", sliceBy=
         decimate(groups, float(sample) / nrecs)
 
     return groups
-
-@tangelo.return_type(dumps)
-@tangelo.types(history=int, query=loads, country=loads, limit=int)
-def run2(host, db, coll, date=None, history=0, country=None, limit=100, query=None, fields=None, sample=None):
-    # First establish a connection.
-    try:
-        c = pymongo.mongo_client.MongoClient(host=host)[db][coll]
-    except (ConnectionFailure, AutoReconnect) as e:
-        return {"error": repr(e)}
-
-    # This will be a list of sub-queries that will all be and-ed together to
-    # form the final query.
-    terms = []
-
-    # If there is a date provided, place it as a term.
-    if date is not None:
-        # Parse the date into a datetime object.
-        try:
-            enddate = datetime.datetime.strptime(date, "%Y-%m-%d")
-        except ValueError as e:
-            return {"error": repr(e)}
-
-        # Go back in history from this date by the number of days given in the
-        # "history" parameter.
-        startdate = enddate - datetime.timedelta(history)
-
-        #terms.append({"posted": enddate})
-        terms.append({"$and": [{"posted": {"$lte": enddate}},
-                               {"posted": {"$gte": startdate}}]})
-
-    # If there is a list of country codes, add them as terms.
-    if country is not None and len(country) > 0:
-        clauses = [{"country_code": code} for code in country]
-        terms.append({"$or": clauses})
-
-    # If there are other query parameters, just include them wholesale.
-    if query is not None:
-        try:
-            query = loads(query)
-        except ValueError as e:
-            return {"error": repr(e)}
-
-        terms.append(query)
-
-    # Tie all the terms together with an "and".
-    search = {"$and": terms}
-
-    try:
-        fields = loads(fields)
-    except (ValueError, TypeError):
-        pass
-
-    # Perform the search.
-    it = c.find(spec=search, limit=limit, fields=fields)
-
-    # Run the iterator to return the results.
-    if sample is None:
-        result = list(it)
-    else:
-        # We want to uniformly sample the results so as to return at most
-        # `sample` results.
-        it2 = it.clone()
-        skip = int(math.ceil(it2.count() / sample))
-        result = list(islice(it2, 0, None, sample))
-
-    # Compute a data ellipse if requested.
-    response = {"results": results}
-    if ellipse:
-        response["ellipse"] = computeDataEllipse(it)
-
-    return response
